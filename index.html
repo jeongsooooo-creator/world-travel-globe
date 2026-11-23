@@ -1,0 +1,2020 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>세계 여행 지구본 · 한반도 중심 3D 인터랙티브 지도</title>
+<meta name="description" content="한반도 중심 3D 지구본으로 전 세계 주요 도시와 임의의 위도·경도 지점의 현지 시각, 날씨, 고도, 실제 국제공항 비행 항로를 탐색하고 도시 찾기 퀴즈를 즐겨보세요.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="세계 여행 지구본 · 3D 인터랙티브 지도">
+<meta property="og:description" content="한반도에서 전 세계 어디든 클릭하여 현지 시각, 날씨, 실제 국제공항 항로와 지역 정보를 확인하세요.">
+<meta property="og:image" content="korea-globe-preview.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="korea-globe-preview.png">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%230d2b49' stroke='%2383dcff' stroke-width='3'/%3E%3Cellipse cx='32' cy='32' rx='14' ry='30' fill='none' stroke='%2383dcff' stroke-opacity='.45' stroke-width='2'/%3E%3Cline x1='2' y1='32' x2='62' y2='32' stroke='%2383dcff' stroke-opacity='.45' stroke-width='2'/%3E%3Cpath d='M34 19c2 1 3 4 2 7-1 3 1 5 0 8-1 2-3 3-4 1-1-3-2-6-1-10 1-3 2-5 3-6z' fill='%2385edff'/%3E%3C/svg%3E">
+<style>
+* { box-sizing: border-box }
+body { margin: 0; background: #081321; color: #eef5ff; font: 15px/1.45 system-ui, -apple-system, sans-serif; overflow: hidden }
+#globe { position: fixed; inset: 0 }
+
+/* 초기 로딩 미리보기 스플래시 */
+#preview-splash {
+  position: fixed; inset: 0; z-index: 2000;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+  background: radial-gradient(circle at 50% 45%, #102844 0%, #081321 75%);
+  transition: opacity 0.45s ease, visibility 0.45s ease;
+}
+#preview-splash.fade-out { opacity: 0; visibility: hidden; pointer-events: none }
+.preview-globe-graphic {
+  width: min(260px, 58vw); height: min(260px, 58vw);
+  filter: drop-shadow(0 0 36px rgba(131, 220, 255, 0.28));
+  animation: pulseGlow 2.4s ease-in-out infinite;
+}
+@keyframes pulseGlow {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 28px rgba(131, 220, 255, 0.25)) }
+  50% { transform: scale(1.02); filter: drop-shadow(0 0 42px rgba(131, 220, 255, 0.42)) }
+}
+.splash-caption { text-align: center }
+.splash-caption strong { display: block; font-size: 18px; color: #eef5ff; letter-spacing: -0.02em }
+.splash-caption span { display: block; margin-top: 4px; font-size: 13px; color: #8ea8c3 }
+
+/* 상단 모드 전환 바 */
+#modes { position: fixed; z-index: 1102; top: max(12px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
+  display: flex; gap: 4px; padding: 4px; border: 1px solid #36516b; border-radius: 12px;
+  background: rgba(11, 25, 42, 0.92); backdrop-filter: blur(10px); white-space: nowrap; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) }
+#modes button { padding: 7px 14px; border-radius: 8px; color: #bacce0; font-weight: 700; font-size: 14px }
+#modes button[aria-pressed="true"] { background: #83dcff; color: #081321; cursor: default }
+#modes button:focus-visible { outline: 2px solid white; outline-offset: 2px }
+
+/* 퀴즈 패널 (상단 고정) */
+#quiz { position: fixed; z-index: 1101; top: calc(max(12px, env(safe-area-inset-top)) + 48px); left: 50%; transform: translateX(-50%);
+  width: min(540px, calc(100vw - 24px)); text-align: center;
+  padding: 10px 14px; border: 1px solid #36516b; border-radius: 12px;
+  background: rgba(11, 25, 42, 0.94); backdrop-filter: blur(10px); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5) }
+#quiz[hidden] { display: none !important }
+#quiz p { display: inline; margin: 0; font-size: 14px }
+#quiz #timer { display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 6px;
+  background: #16304b; color: #83dcff; font-weight: 700; font-size: 13px; font-variant-numeric: tabular-nums }
+#quiz #timer.urgent { background: #4a1c24; color: #ff8f9c }
+#quiz #reflection:not([hidden]) { display: block; margin: 8px 0 4px; padding: 8px 10px; border-radius: 8px; background: #10253b; color: #d6e9fa; font-size: 13px; text-align: left }
+#reflection strong { color: #83dcff }
+#quiz p[hidden], #quiz span[hidden] { display: none }
+#quiz #feedback::before, #quiz #zoom-hint::before { content: ' · ' }
+#question { color: #eef5ff; font-weight: 700 }
+#next { margin-top: 6px; padding: 6px 12px; border-radius: 7px; background: #1c3d5e; color: #83dcff; font-weight: 600; font-size: 13px }
+#game:disabled { opacity: 0.65; cursor: default }
+
+/* 탐색 패널 (초기 위치: 하단 중앙, 드래그 이동 가능) */
+aside#explore { position: fixed; z-index: 1100; bottom: 24px; left: 50%; transform: translateX(-50%);
+  width: 360px; max-height: 38vh;
+  display: flex; flex-direction: column;
+  border: 1px solid #36516b; border-radius: 14px; background: rgba(11, 25, 42, 0.93);
+  backdrop-filter: blur(12px); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55); overflow: hidden }
+aside#explore[hidden] { display: none !important }
+aside#explore.moved { bottom: auto; transform: none; max-height: calc(100dvh - 84px) }
+aside#explore.dragging { user-select: none; border-color: #83dcff; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.75) }
+
+.sheet-grabber { display: none }
+.panel-header { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 12px 16px 9px; border-bottom: 1px solid rgba(54, 81, 107, 0.5);
+  cursor: grab; touch-action: none; user-select: none }
+aside#explore.dragging .panel-header { cursor: grabbing }
+.panel-title-row { display: flex; align-items: center; gap: 6px }
+.drag-grip { color: #6787a6; font-size: 14px; letter-spacing: -2px; line-height: 1 }
+.panel-header h1 { font-size: 17px; margin: 0; letter-spacing: -0.02em }
+.panel-subtitle { font-size: 12px; color: #8ea8c3; margin: 2px 0 0 }
+.header-actions { display: flex; align-items: center; gap: 6px }
+
+.reset-btn { padding: 4px 8px; border-radius: 6px; background: #16304b; border: 1px solid #3d5d7a;
+  color: #9ec5e8; font-size: 11.5px; font-weight: 600; white-space: nowrap }
+.reset-btn:hover { background: #1f4266; color: #fff }
+.reset-btn[hidden] { display: none }
+
+#sheet-toggle { display: none; padding: 5px 10px; border-radius: 7px; background: #16304b; border: 1px solid #3d5d7a; color: #83dcff; font-size: 12px; font-weight: 600; white-space: nowrap }
+
+.panel-body { padding: 12px 16px 16px; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch }
+
+/* 검색 및 국가 선택 컨트롤 */
+.controls-grid { display: grid; grid-template-columns: 1fr; gap: 8px }
+label { display: block; font-size: 12px; font-weight: 600; color: #9eb7d1 }
+select, input[type="search"] { display: block; width: 100%; margin-top: 4px; padding: 9px 11px; color: #eef5ff;
+  background: #13283d; border: 1px solid #486782; border-radius: 8px; font: 14px system-ui, sans-serif; appearance: none }
+select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2383dcff' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10l-5 5z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 10px center; padding-right: 28px }
+input[type="search"]:focus, select:focus { outline: 2px solid #83dcff; outline-offset: -1px; border-color: #83dcff }
+
+.search-wrap { position: relative }
+#search-results { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 1200;
+  margin: 0; padding: 4px; list-style: none; max-height: 200px; overflow-y: auto;
+  border: 1px solid #53728c; border-radius: 9px; background: #0d2034; box-shadow: 0 10px 24px rgba(0, 0, 0, 0.65) }
+#search-results[hidden] { display: none }
+#search-results li button { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: 100%; padding: 8px 10px; border-radius: 6px; text-align: left; color: #eef5ff; font-size: 13px }
+#search-results li button:hover, #search-results li button[aria-selected="true"] { background: #1c3a57; color: #83dcff }
+.search-item-main { display: flex; align-items: center; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.search-item-sub { flex-shrink: 0; font-size: 11px; color: #9ab3cc }
+
+/* 선택된 국가 요약 & 도시 칩 목록 */
+.country-summary { display: flex; align-items: center; gap: 8px; margin-top: 12px; padding: 8px 10px;
+  border-radius: 8px; background: rgba(19, 40, 61, 0.6); border: 1px solid rgba(54, 81, 107, 0.6) }
+#selected-flag { width: 32px; height: 22px; margin: 0; border-radius: 3px }
+#status { margin: 0; font-size: 13px; color: #d6e7f7; font-weight: 500 }
+
+#cities { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 4px; padding: 0; list-style: none }
+#cities:empty { display: none }
+#cities li button { display: inline-flex; align-items: center; gap: 4px; padding: 6px 10px; border-radius: 999px;
+  background: #142c44; border: 1px solid #3a5a78; color: #d8ecff; font-size: 12.5px; font-weight: 500; transition: background 0.15s, border-color 0.15s }
+#cities li button:hover { background: #1e4266; border-color: #83dcff; color: #fff }
+#cities li button.is-capital { border-color: rgba(255, 212, 119, 0.55); color: #ffe6a8 }
+#cities li button.is-active { background: #83dcff; border-color: #83dcff; color: #081321; font-weight: 700 }
+
+/* 도시 및 임의 지점 상세 정보 카드 */
+#city-card { margin-top: 12px; padding: 12px; text-align: left;
+  border: 1px solid #3f607d; border-radius: 11px; background: #0e2236; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05) }
+#city-card[hidden] { display: none !important }
+
+/* 게임 모드에서 독립 플로팅 카드로 표시될 때 (하단 중앙 + 이동 가능) */
+#city-card.floating {
+  position: fixed;
+  z-index: 1105;
+  bottom: max(24px, env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(370px, calc(100vw - 24px));
+  max-height: 38vh;
+  overflow-y: auto;
+  margin-top: 0;
+  background: rgba(11, 25, 42, 0.95);
+  backdrop-filter: blur(12px);
+  border: 1px solid #486b8a;
+  border-radius: 14px;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.65);
+}
+#city-card.floating.moved {
+  bottom: auto;
+  transform: none;
+  max-height: calc(100dvh - 84px);
+}
+#city-card.floating.dragging {
+  user-select: none;
+  border-color: #83dcff;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.8);
+}
+
+.card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding-bottom: 9px; border-bottom: 1px solid rgba(54, 81, 107, 0.65) }
+#city-card.floating .card-head { cursor: grab; touch-action: none; user-select: none }
+#city-card.floating.dragging .card-head { cursor: grabbing }
+.card-grip { display: none; color: #6787a6; font-size: 14px; letter-spacing: -2px; line-height: 1 }
+#city-card.floating .card-grip { display: inline-block }
+
+.card-title-group { display: flex; align-items: center; gap: 8px; min-width: 0 }
+#city-card-flag { width: 32px; height: 22px; margin: 0; border-radius: 3px }
+.pin-badge-icon { font-size: 20px; line-height: 1; flex-shrink: 0 }
+#city-card-title { display: block; font-size: 16px; color: #fff; line-height: 1.25 }
+#city-card-meta { font-size: 12px; color: #9eb7d1; margin-top: 2px }
+.card-actions { display: flex; align-items: center; gap: 5px; flex-shrink: 0 }
+#card-close { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 6px;
+  background: #16304b; color: #9eb7d1; font-size: 14px; line-height: 1 }
+#card-close:hover { background: #214569; color: #fff }
+
+/* 2열 핵심 정보 타일 */
+.info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 10px }
+.info-tile { padding: 8px 9px; border-radius: 8px; background: #132b42; border: 1px solid rgba(58, 90, 120, 0.55) }
+.info-tile.full { grid-column: 1 / -1 }
+.tile-label { display: block; font-size: 11px; font-weight: 600; color: #8ea8c3; margin-bottom: 2px }
+.tile-value { font-size: 12.5px; color: #eef5ff; font-weight: 500; word-break: keep-all }
+.tile-sub { font-size: 11px; color: #9eb7d1; margin-top: 2px; line-height: 1.35 }
+#city-card-flight .tile-value { color: #83dcff; font-weight: 600 }
+#city-card-currency .tile-value { color: #ffe49e }
+#city-card-terrain .tile-value { color: #a3f0c4 }
+
+/* 주간 날씨 스트립 */
+.forecast-section { margin-top: 10px }
+.forecast-header { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #8ea8c3; margin-bottom: 5px; font-weight: 600 }
+#city-card-forecast { display: flex; gap: 5px; overflow-x: auto; padding: 6px;
+  border-radius: 8px; background: #0a1826; border: 1px solid #284159; scrollbar-width: thin }
+#city-card-forecast[hidden] { display: none }
+.fc-day { flex: 1 0 46px; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 3px 2px; border-radius: 5px }
+.fc-day:first-child { background: rgba(131, 220, 255, 0.1) }
+.fc-date { color: #9ab3cc; font-size: 10.5px; font-weight: 600; white-space: nowrap }
+.fc-icon { font-size: 15px; line-height: 1.2 }
+.fc-temp { font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap }
+.fc-max { color: #ffb38a; font-weight: 700 }
+.fc-min { color: #83dcff }
+.fc-rain { color: #7cc4ff; font-size: 10px; min-height: 14px }
+
+.panel-footer { margin-top: 12px; padding-top: 8px; border-top: 1px solid rgba(54, 81, 107, 0.4); font-size: 11px; color: #7f9ab5; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px }
+a { color: #83dcff; text-decoration: none }
+a:hover { text-decoration: underline }
+
+button { color: #a9ddff; background: transparent; border: 0; padding: 3px; cursor: pointer; font: inherit }
+
+/* 지구본 오버레이 & 툴팁 */
+#pointer-tooltip { position: fixed; z-index: 1090; pointer-events: none; width: max-content;
+  max-width: calc(100vw - 12px); padding: 5px 8px; border: 1px solid #53728c;
+  border-radius: 6px; background: #081321; color: #eef5ff; font: 12px system-ui;
+  font-variant-numeric: tabular-nums }
+.country-flag { width: 24px; height: 16px; object-fit: contain; vertical-align: middle; margin-right: 6px; flex-shrink: 0 }
+.city-anchor { width: 0; height: 0; pointer-events: none; color: #fff }
+.city-anchor.capital { color: #ffd477 }
+.city-dot { position: absolute; width: 7px; height: 7px; border-radius: 50%;
+  transform: translate(-50%, -50%); background: currentColor; box-shadow: 0 0 0 1.5px #102030 }
+.city-dot, .city-name { pointer-events: auto; cursor: pointer }
+.city-dot::after { content: ''; position: absolute; inset: -10px }
+.city-tooltip { display: none; position: absolute; bottom: 12px; left: 0;
+  transform: translateX(-50%); width: max-content; padding: 5px 8px;
+  border: 1px solid #53728c; border-radius: 6px; background: #081321;
+  color: #eef5ff; font: 12px system-ui; font-variant-numeric: tabular-nums; z-index: 1005 }
+.city-anchor:hover { z-index: 1000 !important }
+.city-dot:hover ~ .city-tooltip, .city-name:hover ~ .city-tooltip { display: block }
+.city-name { position: absolute; left: 9px; transform: translateY(-50%); white-space: nowrap;
+  font: 600 12px system-ui; text-shadow: 0 1px 4px #000, 0 0 3px #000 }
+
+/* 임의 좌표 클릭 핀 마커 및 위경도 툴팁 */
+.custom-pin-anchor { width: 0; height: 0; pointer-events: none; z-index: 980 }
+.custom-pin-anchor:hover { z-index: 1010 !important }
+.custom-pin-pulse {
+  position: absolute; width: 22px; height: 22px; border-radius: 50%;
+  transform: translate(-50%, -50%);
+  border: 2px solid #ff6b81; pointer-events: none;
+  animation: pinRipple 1.6s ease-out infinite;
+}
+@keyframes pinRipple {
+  0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0.95 }
+  100% { transform: translate(-50%, -50%) scale(1.9); opacity: 0 }
+}
+.custom-pin-dot {
+  position: absolute; width: 11px; height: 11px; border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: #ff4757; border: 2px solid #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.75);
+  pointer-events: auto; cursor: pointer;
+}
+.custom-pin-dot::after { content: ''; position: absolute; inset: -10px }
+.custom-pin-label {
+  position: absolute; left: 11px; transform: translateY(-50%);
+  padding: 2px 7px; border-radius: 5px;
+  background: rgba(11, 25, 42, 0.92); border: 1px solid #ff6b81;
+  color: #ffd1d8; font: 600 11.5px system-ui; white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+  pointer-events: auto; cursor: pointer;
+}
+.custom-pin-tooltip {
+  display: none; position: absolute; bottom: 14px; left: 0;
+  transform: translateX(-50%); width: max-content; padding: 5px 9px;
+  border: 1px solid #ff6b81; border-radius: 6px; background: #081321;
+  color: #eef5ff; font: 12px system-ui; font-variant-numeric: tabular-nums;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.65); z-index: 1015;
+}
+.custom-pin-dot:hover ~ .custom-pin-tooltip,
+.custom-pin-label:hover ~ .custom-pin-tooltip { display: block }
+
+/* 도착 국제공항 핀 마커 */
+.airport-pin-anchor { width: 0; height: 0; pointer-events: none; z-index: 960 }
+.airport-pin-dot {
+  position: absolute; width: 9px; height: 9px; border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: #ffd477; border: 1.5px solid #081321;
+  box-shadow: 0 0 8px rgba(255, 212, 119, 0.9);
+}
+.airport-pin-label {
+  position: absolute; left: 9px; transform: translateY(-50%);
+  padding: 1px 6px; border-radius: 4px;
+  background: rgba(8, 19, 33, 0.88); border: 1px solid rgba(255, 212, 119, 0.65);
+  color: #ffe6a8; font: 600 11px system-ui; white-space: nowrap;
+}
+
+/* 📱 모바일 반응형 바텀 시트 레이아웃 */
+@media (max-width: 700px) {
+  aside#explore {
+    top: auto !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    transform: none !important;
+    width: 100%;
+    max-height: 55dvh;
+    border-radius: 18px 18px 0 0;
+    border-left: 0;
+    border-right: 0;
+    border-bottom: 0;
+    padding-bottom: env(safe-area-inset-bottom);
+    transition: max-height 0.25s ease;
+  }
+  aside#explore.collapsed {
+    max-height: calc(58px + env(safe-area-inset-bottom));
+  }
+  aside#explore.collapsed .panel-body {
+    display: none;
+  }
+  .sheet-grabber {
+    display: block;
+    width: 36px;
+    height: 4px;
+    margin: 8px auto 0;
+    border-radius: 99px;
+    background: #476682;
+    flex-shrink: 0;
+  }
+  .panel-header {
+    padding: 8px 16px 10px;
+    cursor: pointer;
+  }
+  .drag-grip, .panel-subtitle, #reset-pos {
+    display: none !important;
+  }
+  #sheet-toggle {
+    display: inline-block;
+  }
+  .controls-grid {
+    grid-template-columns: 1.15fr 0.85fr;
+    gap: 8px;
+  }
+  select, input[type="search"] {
+    font-size: 16px;
+    padding: 8px 10px;
+  }
+  select {
+    padding-right: 26px;
+  }
+  .info-grid {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  #city-card.floating:not(.moved) {
+    bottom: 0;
+    left: 0;
+    right: 0;
+    transform: none;
+    width: 100%;
+    max-height: 44dvh;
+    border-radius: 18px 18px 0 0;
+    border-left: 0;
+    border-right: 0;
+    border-bottom: 0;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- 한반도 지구본 미리보기 스플래시 -->
+<div id="preview-splash" aria-hidden="true">
+  <svg class="preview-globe-graphic" viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <radialGradient id="oceanGrad" cx="42%" cy="38%" r="60%">
+        <stop offset="0%" stop-color="#1b4d7e"/>
+        <stop offset="55%" stop-color="#0e2a4a"/>
+        <stop offset="100%" stop-color="#061222"/>
+      </radialGradient>
+      <radialGradient id="atmoGlow" cx="50%" cy="50%" r="50%">
+        <stop offset="82%" stop-color="#83dcff" stop-opacity="0"/>
+        <stop offset="96%" stop-color="#83dcff" stop-opacity="0.28"/>
+        <stop offset="100%" stop-color="#83dcff" stop-opacity="0"/>
+      </radialGradient>
+      <clipPath id="globeClip">
+        <circle cx="120" cy="120" r="96"/>
+      </clipPath>
+    </defs>
+    <circle cx="120" cy="120" r="112" fill="url(#atmoGlow)"/>
+    <circle cx="120" cy="120" r="96" fill="url(#oceanGrad)" stroke="#4c7ea8" stroke-width="1.5"/>
+    <g clip-path="url(#globeClip)">
+      <g stroke="#83dcff" stroke-opacity="0.22" stroke-width="0.9" fill="none">
+        <ellipse cx="120" cy="120" rx="96" ry="30"/>
+        <ellipse cx="120" cy="120" rx="96" ry="64"/>
+        <ellipse cx="120" cy="120" rx="34" ry="96"/>
+        <ellipse cx="120" cy="120" rx="70" ry="96"/>
+        <line x1="24" y1="120" x2="216" y2="120"/>
+        <line x1="120" y1="24" x2="120" y2="216"/>
+      </g>
+      <path d="M24,42 L88,36 L112,54 L104,76 L114,88 L108,108 L92,126 L70,136 L44,132 L24,112 Z" fill="#2d6b56" fill-opacity="0.72" stroke="#64b896" stroke-width="1"/>
+      <path d="M113,86 C118,86 122,90 121,96 C120,102 123,108 120,113 C117,116 113,115 112,110 C111,104 109,97 110,91 C110,88 111,86 113,86 Z" fill="#85edff" stroke="#ffffff" stroke-width="1.2"/>
+      <circle cx="114" cy="119" r="2.2" fill="#85edff"/>
+      <path d="M136,84 C140,86 141,94 138,102 C135,109 129,114 125,115 C124,112 128,106 132,99 C134,92 134,86 136,84 Z" fill="#3a7d65" fill-opacity="0.8"/>
+      <path d="M115,96 Q145,65 178,82" fill="none" stroke="#ffd477" stroke-width="1.5" stroke-dasharray="4 3"/>
+      <circle cx="115" cy="96" r="3.5" fill="#ffd477"/>
+      <circle cx="115" cy="96" r="8" fill="none" stroke="#ffd477" stroke-width="1" stroke-opacity="0.7"/>
+    </g>
+  </svg>
+  <div class="splash-caption">
+    <strong>세계 여행 지구본</strong>
+    <span>국경 · 도시 · 국제공항 데이터를 불러오는 중…</span>
+  </div>
+</div>
+
+<div id="globe"></div>
+<div id="pointer-tooltip" aria-hidden="true" hidden><img id="hover-flag" class="country-flag" alt="" hidden><span id="hover-text"></span></div>
+
+<div id="modes" role="group" aria-label="지구본 모드">
+  <button id="browse" type="button" aria-pressed="true">탐색 모드</button>
+  <button id="game" type="button" aria-pressed="false" disabled>게임 모드</button>
+</div>
+
+<section id="quiz" hidden>
+  <p id="question"></p><span id="timer" aria-live="off">⏱ 60초</span>
+  <p id="feedback" role="status"></p>
+  <p id="zoom-hint" hidden>필요하면 확대하거나 회전하세요.</p>
+  <p id="reflection" hidden><strong>세계 친구 만나기</strong> · <span id="reflection-prompt"></span></p>
+  <button id="next" type="button" hidden>다음 문제</button>
+</section>
+
+<aside id="explore">
+  <div class="sheet-grabber" aria-hidden="true"></div>
+  <div class="panel-header" id="panel-header" title="드래그하여 창 위치 이동">
+    <div>
+      <div class="panel-title-row">
+        <span class="drag-grip" aria-hidden="true">⋮⋮</span>
+        <h1>세계 여행 지구본</h1>
+      </div>
+      <p class="panel-subtitle">지구본 아무 곳이나 클릭 · 창 드래그 이동</p>
+    </div>
+    <div class="header-actions">
+      <button id="reset-pos" class="reset-btn" type="button" title="원래 위치로 되돌리기" hidden>↺ 초기화</button>
+      <button id="sheet-toggle" type="button" aria-expanded="true">접기 ▾</button>
+    </div>
+  </div>
+
+  <div class="panel-body">
+    <div class="controls-grid">
+      <div class="search-wrap">
+        <label>도시 · 국가 검색
+          <input id="search-input" type="search" placeholder="예: 도쿄, Paris, 프랑스" autocomplete="off" disabled>
+        </label>
+        <ul id="search-results" role="listbox" aria-label="검색 결과" hidden></ul>
+      </div>
+      <label>국가 선택
+        <select id="country" disabled><option value="">전체 국가</option></select>
+      </label>
+    </div>
+
+    <div class="country-summary">
+      <img id="selected-flag" class="country-flag" alt="" hidden>
+      <p id="status" role="status">국경·도시·국제공항 데이터를 불러오는 중…</p>
+    </div>
+
+    <ul id="cities" aria-label="주요 도시 목록"></ul>
+
+    <section id="city-card" aria-label="지역 및 도시 여행 정보 카드" hidden>
+      <div class="card-head" id="card-head" title="게임 모드에서는 드래그하여 이동 가능">
+        <div class="card-title-group">
+          <span class="card-grip" aria-hidden="true">⋮⋮</span>
+          <img id="city-card-flag" class="country-flag" alt="" hidden>
+          <span id="city-card-pin-icon" class="pin-badge-icon" hidden>📍</span>
+          <div>
+            <strong id="city-card-title"></strong>
+            <div id="city-card-meta"></div>
+          </div>
+        </div>
+        <div class="card-actions">
+          <button id="card-reset-pos" class="reset-btn" type="button" title="원래 위치로 되돌리기" hidden>↺</button>
+          <button id="card-close" type="button" aria-label="정보 닫기" title="닫기">✕</button>
+        </div>
+      </div>
+
+      <div class="info-grid">
+        <div class="info-tile full" id="city-card-flight">
+          <span class="tile-label">✈️ 인천(ICN) → 최근접 실제 국제공항 항로</span>
+          <div class="tile-value" id="flight-val"></div>
+          <div class="tile-sub" id="flight-sub"></div>
+        </div>
+        <div class="info-tile" id="city-card-currency">
+          <span class="tile-label">💱 현지 통화 · 환율</span>
+          <div class="tile-value" id="currency-val"></div>
+        </div>
+        <div class="info-tile" id="city-card-terrain" hidden>
+          <span class="tile-label">⛰️ 지형 · 해발 고도</span>
+          <div class="tile-value" id="terrain-val"></div>
+        </div>
+        <div class="info-tile full" id="city-card-clock">
+          <span class="tile-label">🕒 현지 시각 · 시차</span>
+          <div class="tile-value" id="clock-val"></div>
+        </div>
+        <div class="info-tile full" id="city-card-weather" role="status">
+          <span class="tile-label">🌤️ 현재 날씨 · 일출/일몰</span>
+          <div class="tile-value" id="weather-val"></div>
+          <div class="tile-value" id="sun-val" style="font-size: 11.5px; color: #9eb7d1; margin-top: 2px"></div>
+        </div>
+      </div>
+
+      <div class="forecast-section" id="forecast-wrap" hidden>
+        <div class="forecast-header">
+          <span>📅 7일 주간 예보</span>
+          <span>최고 / 최저 · 강수</span>
+        </div>
+        <div id="city-card-forecast" aria-label="주간 날씨 예보"></div>
+      </div>
+    </section>
+
+    <div class="panel-footer">
+      <span>지도·공항 · <a href="https://www.naturalearthdata.com/" target="_blank" rel="noopener">Natural Earth</a></span>
+      <span>날씨 · <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a></span>
+      <span>환율 · <a href="https://www.exchangerate-api.com/" target="_blank" rel="noopener">ExchangeRate-API</a></span>
+    </div>
+  </div>
+</aside>
+
+<script src="https://cdn.jsdelivr.net/npm/globe.gl@2/dist/globe.gl.min.js"></script>
+<script>
+const base = 'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/';
+const ICN_ORIGIN = { name: '인천국제공항(ICN)', lat: 37.4602, lng: 126.4407 };
+
+// 주요 국제공항 한국어 병기 사전 (IATA 코드 기준)
+const AIRPORT_KO = {
+  ICN: '인천국제공항', GMP: '김포국제공항', PUS: '김해국제공항', CJU: '제주국제공항', TAE: '대구국제공항',
+  NRT: '도쿄 나리타공항', HND: '도쿄 하네다공항', KIX: '오사카 간사이공항', FUK: '후쿠오카공항', CTS: '삿포로 신치토세공항', OKA: '오키나와 나하공항',
+  PEK: '베이징 서우두공항', PKX: '베이징 다싱공항', PVG: '상하이 푸둥공항', CAN: '광저우 바이윈공항', HKG: '홍콩국제공항', TPE: '타이베이 타오위안공항',
+  JFK: '뉴욕 존 F. 케네디공항', EWR: '뉴어크 리버티공항', LAX: '로스앤젤레스국제공항', SFO: '샌프란시스코국제공항', ORD: '시카고 오헤어공항', IAD: '워싱턴 덜레스공항', SEA: '시애틀 타코마공항', HNL: '호놀룰루공항',
+  YYZ: '토론토 피어슨공항', YVR: '밴쿠버국제공항',
+  LHR: '런던 히스로공항', LGW: '런던 개트윅공항', MAN: '맨체스터공항', EDI: '에든버러공항',
+  CDG: '파리 샤를 드골공항', ORY: '파리 오를리공항', NCE: '니스 코트다쥐르공항', LYS: '리옹 공항',
+  FRA: '프랑크푸르트공항', MUC: '뮌헨공항', BER: '베를린 브란덴부르크공항',
+  FCO: '로마 피우미치노공항', MXP: '밀라노 말펜사공항', VCE: '베네치아 마르코 폴로공항', BLQ: '볼로냐공항',
+  MAD: '마드리드 바라하스공항', BCN: '바르셀로나 엘프라트공항', LIS: '리스본공항',
+  AMS: '암스테르담 스키폴공항', BRU: '브뤼셀공항', ZRH: '취리히공항', GVA: '제네바공항', VIE: '빈 국제공항',
+  PRG: '프라하 바츨라프 하벨공항', WAW: '바르샤바 쇼팽공항', BUD: '부다페스트공항', ATH: '아테네국제공항', IST: '이스탄불국제공항',
+  SVO: '모스크바 셰레메티예보공항', DME: '모스크바 도모데도보공항', LED: '상트페테르부르크 풀코보공항',
+  BKK: '방콕 수완나품공항', HKT: '푸껫국제공항', CNX: '치앙마이국제공항',
+  SGN: '호찌민 떤선녓공항', HAN: '하노이 노이바이공항', DAD: '다낭국제공항',
+  SIN: '싱가포르 창이공항', KUL: '쿠알라룸푸르국제공항', CGK: '자카르타 수카르노 하타공항', DPS: '발리 응우라라이공항', MNL: '마닐라 니노이 아키노공항',
+  DEL: '뉴델리 인디라 간디공항', BOM: '뭄바이 차트라파티 시바지공항',
+  DXB: '두바이국제공항', AUH: '아부다비국제공항', DOH: '도하 하마드국제공항', RUH: '리야드 킹 칼리드공항', JED: '제다 킹 압둘아지즈공항',
+  CAI: '카이로국제공항', CMN: '카사블랑카 모하메드 5세공항', JNB: '요하네스버그 OR 탐보공항', NBO: '나이로비 조모 케냐타공항',
+  SYD: '시드니 킹스포드 스미스공항', MEL: '멜버른공항', BNE: '브리즈번공항', PER: '퍼스공항', AKL: '오클랜드국제공항',
+  GRU: '상파울루 구아룰류스공항', GIG: '리우데자네이루 갈레앙공항', EZE: '부에노스아이레스 에세이사공항', SCL: '산티아고공항', LIM: '리마 호르헤 차베스공항', BOG: '보고타 엘도라도공항', MEX: '멕시코시티국제공항'
+};
+
+// 자체 국제공항이 없는 소국/미니국가 -> 인접 국가 대표 국제공항 경유지 매핑
+const NO_AIRPORT_TRANSITS = {
+  VAT: { viaCity: '로마 피우미치노공항(FCO)', viaCountry: '이탈리아', lat: 41.8003, lng: 12.2389, note: '국제공항 없음 · 이탈리아 로마(FCO) 경유 육로 이동' },
+  SMR: { viaCity: '볼로냐 굴리엘모 마르코니공항(BLQ)', viaCountry: '이탈리아', lat: 44.5354, lng: 11.2887, note: '국제공항 없음 · 이탈리아 볼로냐(BLQ) 경유 이동' },
+  MCO: { viaCity: '니스 코트다쥐르공항(NCE)', viaCountry: '프랑스', lat: 43.6584, lng: 7.2159, note: '국제공항 없음 · 프랑스 니스(NCE) 경유 이동' },
+  AND: { viaCity: '바르셀로나 엘프라트공항(BCN)', viaCountry: '스페인', lat: 41.2974, lng: 2.0833, note: '국제공항 없음 · 스페인 바르셀로나(BCN) 경유' },
+  LIE: { viaCity: '취리히공항(ZRH)', viaCountry: '스위스', lat: 47.4647, lng: 8.5492, note: '국제공항 없음 · 스위스 취리히(ZRH) 경유' },
+  PSE: { viaCity: '암만 퀸 알리아공항(AMM)', viaCountry: '요르단', lat: 31.7226, lng: 35.9932, note: '민간 국제공항 없음 · 요르단 암만(AMM) 경유' },
+  ESH: { viaCity: '카사블랑카 모하메드 5세공항(CMN)', viaCountry: '모로코', lat: 33.3675, lng: -7.5898, note: '국제관문 부족 · 모로코 카사블랑카(CMN) 경유' }
+};
+
+const splash = document.querySelector('#preview-splash');
+const explore = document.querySelector('#explore');
+const panelHeader = document.querySelector('#panel-header');
+const resetPosBtn = document.querySelector('#reset-pos');
+const sheetToggle = document.querySelector('#sheet-toggle');
+const browse = document.querySelector('#browse');
+const game = document.querySelector('#game');
+const next = document.querySelector('#next');
+const quiz = document.querySelector('#quiz');
+const question = document.querySelector('#question');
+const timerBadge = document.querySelector('#timer');
+const reflection = document.querySelector('#reflection');
+const reflectionPrompt = document.querySelector('#reflection-prompt');
+const reflectionQuestions = [
+  '지금 한국과 이 도시는 각각 몇 시인가요? 두 곳의 친구들은 지금 무엇을 하고 있을까요?',
+  '이 도시에 사는 친구에게 우리 동네의 어디를 보여주고 싶나요? 그 친구의 동네에선 어디에 가 보고 싶나요?',
+  '이 도시에 사는 친구에게 방과 후에 뭘 하는지 물어보세요. 같은 도시에 사는 두 친구는 어떻게 다르게 답할까요?',
+  '우리 동네와 이 도시가 모두 더 더워진다면, 두 곳의 학교 운동장을 어떻게 바꾸면 좋을까요?',
+  '오늘 먹은 음식이나 입은 옷의 원산지를 찾아보세요. 어디에서 어떤 길을 거쳐 우리에게 왔을까요?'
+];
+const zoomHint = document.querySelector('#zoom-hint');
+const feedback = document.querySelector('#feedback');
+const searchInput = document.querySelector('#search-input');
+const searchResults = document.querySelector('#search-results');
+const select = document.querySelector('#country');
+const status = document.querySelector('#status');
+const hoverFlag = document.querySelector('#hover-flag');
+const hoverText = document.querySelector('#hover-text');
+const selectedFlag = document.querySelector('#selected-flag');
+const pointerTooltip = document.querySelector('#pointer-tooltip');
+const container = document.querySelector('#globe');
+const list = document.querySelector('#cities');
+const displayNames = new Intl.DisplayNames(['ko'], {type: 'region', fallback: 'none'});
+const koreanCities = {Seoul: '서울', Busan: '부산', Incheon: '인천', Daegu: '대구',
+  Daejeon: '대전', Gwangju: '광주', Ulsan: '울산', Suwon: '수원'};
+
+function setSheetCollapsed(collapsed) {
+  explore.classList.toggle('collapsed', collapsed);
+  sheetToggle.setAttribute('aria-expanded', String(!collapsed));
+  sheetToggle.textContent = collapsed ? '펼치기 ▴' : '접기 ▾';
+}
+
+let customPos = null;
+function applyPanelPosition(left, top) {
+  explore.classList.add('moved');
+  const rect = explore.getBoundingClientRect();
+  const maxLeft = Math.max(8, window.innerWidth - rect.width - 8);
+  const maxTop = Math.max(8, window.innerHeight - Math.min(rect.height, 140) - 8);
+  const clampedLeft = Math.min(Math.max(8, left), maxLeft);
+  const clampedTop = Math.min(Math.max(8, top), maxTop);
+  customPos = { left: clampedLeft, top: clampedTop };
+  explore.style.left = clampedLeft + 'px';
+  explore.style.top = clampedTop + 'px';
+  explore.style.bottom = 'auto';
+  explore.style.transform = 'none';
+  explore.style.maxHeight = Math.max(220, window.innerHeight - clampedTop - 16) + 'px';
+  resetPosBtn.hidden = false;
+}
+
+function resetPanelPosition() {
+  customPos = null;
+  explore.classList.remove('moved');
+  explore.style.left = '';
+  explore.style.top = '';
+  explore.style.bottom = '';
+  explore.style.transform = '';
+  explore.style.maxHeight = '';
+  resetPosBtn.hidden = true;
+}
+resetPosBtn.addEventListener('click', event => {
+  event.stopPropagation();
+  resetPanelPosition();
+});
+
+let dragState = null;
+panelHeader.addEventListener('pointerdown', event => {
+  if (event.target.closest('button')) return;
+  const isMobile = window.innerWidth <= 700;
+  const rect = explore.getBoundingClientRect();
+  dragState = {
+    pointerId: event.pointerId,
+    isMobile,
+    startX: event.clientX,
+    startY: event.clientY,
+    origLeft: rect.left,
+    origTop: rect.top,
+    moved: false
+  };
+  panelHeader.setPointerCapture(event.pointerId);
+  if (!isMobile) explore.classList.add('dragging');
+});
+
+panelHeader.addEventListener('pointermove', event => {
+  if (!dragState || event.pointerId !== dragState.pointerId) return;
+  const dx = event.clientX - dragState.startX;
+  const dy = event.clientY - dragState.startY;
+  if (Math.hypot(dx, dy) > 4) dragState.moved = true;
+  if (!dragState.isMobile && dragState.moved) {
+    applyPanelPosition(dragState.origLeft + dx, dragState.origTop + dy);
+  }
+});
+
+function endPanelDrag(event) {
+  if (!dragState || event.pointerId !== dragState.pointerId) return;
+  const { isMobile, startY, moved } = dragState;
+  const dy = event.clientY - startY;
+  explore.classList.remove('dragging');
+  dragState = null;
+
+  if (isMobile) {
+    if (Math.abs(dy) > 25) {
+      setSheetCollapsed(dy > 0);
+    } else if (!moved) {
+      setSheetCollapsed(!explore.classList.contains('collapsed'));
+    }
+  }
+}
+panelHeader.addEventListener('pointerup', endPanelDrag);
+panelHeader.addEventListener('pointercancel', endPanelDrag);
+sheetToggle.addEventListener('click', event => {
+  event.stopPropagation();
+  setSheetCollapsed(!explore.classList.contains('collapsed'));
+});
+
+const COUNTRY_CURRENCIES = {
+  KR: ['KRW', '원'], JP: ['JPY', '엔'], CN: ['CNY', '위안'], TW: ['TWD', '대만 달러'], HK: ['HKD', '홍콩 달러'],
+  US: ['USD', '달러'], CA: ['CAD', '캐나다 달러'], MX: ['MXN', '페소'], BR: ['BRL', '헤알'], AR: ['ARS', '페소'],
+  CL: ['CLP', '페소'], PE: ['PEN', '솔'], CO: ['COP', '페소'],
+  GB: ['GBP', '파운드'], CH: ['CHF', '프랑'], SE: ['SEK', '크로나'], NO: ['NOK', '크로네'], DK: ['DKK', '크로네'],
+  PL: ['PLN', '즈워티'], CZ: ['CZK', '코루나'], HU: ['HUF', '포린트'], IS: ['ISK', '크로나'], TR: ['TRY', '리라'],
+  RU: ['RUB', '루블'], UA: ['UAH', '흐리우냐'],
+  FR: ['EUR', '유로'], DE: ['EUR', '유로'], IT: ['EUR', '유로'], ES: ['EUR', '유로'], PT: ['EUR', '유로'],
+  NL: ['EUR', '유로'], BE: ['EUR', '유로'], AT: ['EUR', '유로'], GR: ['EUR', '유로'], FI: ['EUR', '유로'],
+  IE: ['EUR', '유로'], HR: ['EUR', '유로'], EE: ['EUR', '유로'], LV: ['EUR', '유로'], LT: ['EUR', '유로'],
+  SK: ['EUR', '유로'], SI: ['EUR', '유로'], LU: ['EUR', '유로'], CY: ['EUR', '유로'], MT: ['EUR', '유로'],
+  VA: ['EUR', '유로'], SM: ['EUR', '유로'], MC: ['EUR', '유로'], AD: ['EUR', '유로'], LI: ['CHF', '프랑'],
+  AU: ['AUD', '호주 달러'], NZ: ['NZD', '뉴질랜드 달러'],
+  TH: ['THB', '바트'], VN: ['VND', '동'], PH: ['PHP', '페소'], ID: ['IDR', '루피아'], MY: ['MYR', '링깃'],
+  SG: ['SGD', '싱가포르 달러'], KH: ['KHR', '리엘'], LA: ['LAK', '킵'], MM: ['MMK', '짯'],
+  IN: ['INR', '루피'], NP: ['NPR', '루피'], LK: ['LKR', '루피'],
+  AE: ['AED', '디르함'], SA: ['SAR', '리얄'], QA: ['QAR', '리얄'], IL: ['ILS', '셰켈'], JO: ['JOD', '디나르'],
+  EG: ['EGP', '파운드'], MA: ['MAD', '디르함'], ZA: ['ZAR', '랜드'], KE: ['KES', '실링'],
+  MN: ['MNT', '투그릭'], KZ: ['KZT', '텡게'], UZ: ['UZS', '숨']
+};
+
+let krwRatesCache = null;
+let krwRatesPromise = null;
+async function getKrwRates() {
+  if (krwRatesCache) return krwRatesCache;
+  if (!krwRatesPromise) {
+    krwRatesPromise = fetch('https://open.er-api.com/v6/latest/KRW')
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data?.result === 'success' && data.rates) {
+          krwRatesCache = data.rates;
+        }
+        return krwRatesCache;
+      })
+      .catch(() => null);
+  }
+  return krwRatesPromise;
+}
+
+function calcFlightMetrics(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const toRad = deg => deg * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  const distanceKm = Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+  if (distanceKm < 80) return { distanceKm, durationText: '국내/근거리' };
+  const totalMinutes = Math.round((distanceKm / 820) * 60 + 45);
+  const hours = Math.floor(totalMinutes / 60);
+  const mins = Math.round((totalMinutes % 60) / 5) * 5;
+  const durationText = [hours && `${hours}시간`, mins && `${mins}분`].filter(Boolean).join(' ');
+  return { distanceKm, durationText };
+}
+
+function getOceanRegionName(lat, lng) {
+  if (lat >= 66.5) return '북극해 (Arctic Ocean)';
+  if (lat <= -60) return '남극해 (Southern Ocean)';
+  if (lat >= 34 && lat <= 42 && lng >= 127.5 && lng <= 141) return '동해 (East Sea)';
+  if (lat >= 32 && lat <= 41 && lng >= 118 && lng <= 126.5) return '서해 / 황해 (Yellow Sea)';
+  if (lat >= 31 && lat <= 35 && lng >= 124 && lng <= 130) return '남해 / 동중국해';
+  if (lat >= 30 && lat <= 46 && lng >= -6 && lng <= 36) return '지중해 (Mediterranean Sea)';
+  if (lat >= 10 && lat <= 30 && lng >= 32 && lng <= 44) return '홍해 (Red Sea)';
+  if (lat >= 24 && lat <= 30 && lng >= 48 && lng <= 56) return '페르시아만 (Persian Gulf)';
+  if (lat >= 8 && lat <= 25 && lng >= -90 && lng <= -60) return '카리브해 (Caribbean Sea)';
+  if (lat >= 18 && lat <= 31 && lng >= -98 && lng <= -81) return '멕시코만 (Gulf of Mexico)';
+  if (lat >= -60 && lat <= 30 && lng >= 20 && lng <= 120) return '인도양 (Indian Ocean)';
+  if (lng >= -70 && lng <= 20) {
+    return lat >= 0 ? '북대서양 (North Atlantic Ocean)' : '남대서양 (South Atlantic Ocean)';
+  }
+  return lat >= 0 ? '북태평양 (North Pacific Ocean)' : '남태평양 (South Pacific Ocean)';
+}
+
+const countryCode = country => {
+  const properties = country?.properties;
+  return [properties?.ISO_A2, properties?.ISO_A2_EH,
+    properties?.ADM0_A3 === 'KOS' ? 'XK' : null].find(value => /^[A-Z]{2}$/.test(value ?? '')) || '';
+};
+const flagUrl = country => {
+  const code = countryCode(country);
+  return code ? 'https://flagcdn.com/w80/' + code.toLowerCase() + '.png' : '';
+};
+const countryName = ({properties: p}) => {
+  if (p.ISO_A2 === 'TR' || p.ADM0_A3 === 'TUR') return '튀르키예';
+  return p.NAME_KO || (/^[A-Z]{2}$/.test(p.ISO_A2) && displayNames.of(p.ISO_A2)) || p.ADMIN;
+};
+function showFlag(image, country) {
+  const url = flagUrl(country);
+  if (image.dataset.flagUrl === url) return;
+  image.dataset.flagUrl = url;
+  image.hidden = !url;
+  if (url) image.src = url;
+  else image.removeAttribute('src');
+}
+for (const image of [hoverFlag, selectedFlag, document.querySelector('#city-card-flag')]) {
+  image.addEventListener('error', () => { image.hidden = true; });
+}
+
+const cityName = ({properties: p}) => {
+  const english = p.NAME_EN?.trim() || p.name_en?.trim() || p.NAMEASCII || p.NAME;
+  const korean = koreanCities[english] || koreanCities[p.NAME] ||
+    (p.NAME_KO || p.name_ko || '').trim();
+  return /[가-힣]/.test(korean) ? korean + '(' + english + ')' : english;
+};
+const isCapital = ({properties: p}) => Number(p.ADM0CAP) === 1;
+const population = ({properties: p}) => Number(p.POP_MAX) || 0;
+
+async function loadFeatures(file) {
+  const response = await fetch(base + file);
+  if (!response.ok) throw new Error(file + ' · HTTP ' + response.status);
+  return (await response.json()).features;
+}
+
+function makeLines(countries) {
+  const lines = [];
+  for (let lat = -80; lat <= 80; lat += 10) {
+    lines.push({points: Array.from({length: 361}, (_, i) => [lat, i - 180])});
+  }
+  for (let lng = -180; lng < 180; lng += 15) {
+    lines.push({points: Array.from({length: 181}, (_, i) => [i - 90, lng])});
+  }
+  for (const country of countries) {
+    const {type, coordinates} = country.geometry;
+    const polygons = type === 'Polygon' ? [coordinates] : coordinates;
+    for (const polygon of polygons) {
+      for (const ring of polygon) {
+        lines.push({country, points: ring.map(([lng, lat]) => [lat, lng])});
+      }
+    }
+  }
+  return lines;
+}
+
+function inRing(lng, lat, ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [ax, ay] = ring[j];
+    const [bx, by] = ring[i];
+    if (Math.abs((lng - ax) * (by - ay) - (lat - ay) * (bx - ax)) < 1e-10 &&
+        lng >= Math.min(ax, bx) && lng <= Math.max(ax, bx) &&
+        lat >= Math.min(ay, by) && lat <= Math.max(ay, by)) return true;
+    if ((ay > lat) !== (by > lat) && lng < ax + (lat - ay) * (bx - ax) / (by - ay)) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+function indexCountries(countries) {
+  return countries.flatMap(country => {
+    const {type, coordinates} = country.geometry;
+    const polygons = type === 'Polygon' ? [coordinates] : coordinates;
+    return polygons.map(([outer, ...holes]) => {
+      let west = 180, east = -180, south = 90, north = -90;
+      for (const [lng, lat] of outer) {
+        west = Math.min(west, lng);
+        east = Math.max(east, lng);
+        south = Math.min(south, lat);
+        north = Math.max(north, lat);
+      }
+      return {country, outer, holes, west, east, south, north};
+    });
+  });
+}
+
+function countryAt(point, regions) {
+  if (!point) return null;
+  const {lat, lng} = point;
+  const find = longitude => regions.find(region => longitude >= region.west &&
+    longitude <= region.east && lat >= region.south && lat <= region.north &&
+    inRing(longitude, lat, region.outer) &&
+    !region.holes.some(hole => inRing(longitude, lat, hole)));
+  return (find(lng) || (Math.abs(lng) === 180 && find(-lng)))?.country ?? null;
+}
+
+function formatAngle(value, positive, negative, digits = 2) {
+  const amount = Math.abs(value).toFixed(digits);
+  return amount + '°' + (Number(amount) === 0 ? '' : ' ' + (value < 0 ? negative : positive));
+}
+
+async function start() {
+  if (!window.Globe) throw new Error('Globe.gl을 불러올 수 없습니다.');
+  const [countries, cities, rawAirports] = await Promise.all([
+    loadFeatures('ne_110m_admin_0_countries.geojson'),
+    loadFeatures('ne_10m_populated_places.geojson'),
+    loadFeatures('ne_10m_airports.geojson').catch(() => [])
+  ]);
+  getKrwRates();
+
+  const regions = indexCountries(countries);
+  const countryByCode = new Map();
+  for (const country of countries) {
+    const code = country.properties.ADM0_A3;
+    if (code && code !== '-99') countryByCode.set(code, country);
+  }
+  const cityGroups = new Map();
+  for (const city of cities) {
+    const code = city.properties.ADM0_A3;
+    if (!code || code === '-99') continue;
+    if (!cityGroups.has(code)) cityGroups.set(code, []);
+    cityGroups.get(code).push(city);
+  }
+
+  // 실제 국제공항(IATA 코드 보유 major/mid 등급 공항) 색인 구축
+  const internationalAirports = [];
+  const airportsByAdm0 = new Map();
+  for (const ap of rawAirports) {
+    const p = ap.properties || {};
+    const iata = (p.iata_code || '').trim().toUpperCase();
+    const apType = (p.type || '').toLowerCase();
+    // IATA 3자리 코드가 있고, 주요 공항(major) 또는 중형 국제공항(mid)인 경우만 실제 국제선 관문으로 채택
+    if (!/^[A-Z]{3}$/.test(iata)) continue;
+    if (!apType.includes('major') && !apType.includes('mid')) continue;
+    const [lng, lat] = ap.geometry.coordinates;
+    const koName = AIRPORT_KO[iata];
+    const enName = (p.name || iata).trim();
+    const displayName = koName ? `${koName}(${iata})` : `${enName}(${iata})`;
+    const ownerCountry = countryAt({ lat, lng }, regions);
+    const adm0 = ownerCountry?.properties?.ADM0_A3 || null;
+    const rank = apType.includes('major') ? 2 : 1;
+    const entry = { iata, name: displayName, lat, lng, adm0, country: ownerCountry, rank };
+    internationalAirports.push(entry);
+    if (adm0) {
+      if (!airportsByAdm0.has(adm0)) airportsByAdm0.set(adm0, []);
+      airportsByAdm0.get(adm0).push(entry);
+    }
+  }
+
+  // 목표 좌표와 소속 국가에 가장 가까운 실제 국제공항 찾기
+  function findNearestInternationalAirport(country, targetLat, targetLng) {
+    const adm0 = country?.properties?.ADM0_A3;
+
+    // 1. 국제공항이 없는 소국/미니국가인 경우 인접 국가 경유 국제공항 반환
+    if (adm0 && NO_AIRPORT_TRANSITS[adm0]) {
+      const t = NO_AIRPORT_TRANSITS[adm0];
+      return {
+        isTransit: true,
+        name: t.viaCity,
+        lat: t.lat,
+        lng: t.lng,
+        groundDistKm: calcFlightMetrics(t.lat, t.lng, targetLat, targetLng).distanceKm,
+        note: t.note
+      };
+    }
+
+    // 2. 해당 국가 내 실제 국제공항 목록 중 목표 지점에서 가장 가까운 공항 선택 (major 공항 가중치 적용)
+    const countryAirports = adm0 ? (airportsByAdm0.get(adm0) || []) : [];
+    if (countryAirports.length > 0) {
+      let best = countryAirports[0];
+      let bestScore = Infinity;
+      for (const ap of countryAirports) {
+        const dist = calcFlightMetrics(targetLat, targetLng, ap.lat, ap.lng).distanceKm;
+        // 주요 국제허브(major)가 60km 이내에 있으면 중형 공항보다 우선 선택
+        const score = dist - (ap.rank === 2 ? 45 : 0);
+        if (score < bestScore) {
+          bestScore = score;
+          best = ap;
+        }
+      }
+      const groundDistKm = calcFlightMetrics(best.lat, best.lng, targetLat, targetLng).distanceKm;
+      return {
+        isTransit: false,
+        name: best.name,
+        lat: best.lat,
+        lng: best.lng,
+        groundDistKm,
+        note: groundDistKm <= 45
+          ? `현지 국제공항(${best.name}) 직항 연결`
+          : `가장 가까운 실제 국제공항 ${best.name} 연결 (목적지까지 약 ${groundDistKm.toLocaleString('ko-KR')}km)`
+      };
+    }
+
+    // 3. 해당 국가에 국제공항 데이터가 전혀 없는 경우, 전 세계 실제 국제공항 중 최단 거리 인접국 공항으로 경유 연결
+    if (internationalAirports.length > 0) {
+      let nearest = internationalAirports[0];
+      let minDist = Infinity;
+      for (const ap of internationalAirports) {
+        const d = calcFlightMetrics(targetLat, targetLng, ap.lat, ap.lng).distanceKm;
+        if (d < minDist) {
+          minDist = d;
+          nearest = ap;
+        }
+      }
+      const viaCountryLabel = nearest.country ? `${countryName(nearest.country)} ` : '';
+      return {
+        isTransit: true,
+        name: nearest.name,
+        lat: nearest.lat,
+        lng: nearest.lng,
+        groundDistKm: minDist,
+        note: `자체 국제공항 없음 · 인접국 ${viaCountryLabel}${nearest.name} 경유 (${minDist.toLocaleString('ko-KR')}km)`
+      };
+    }
+
+    return null;
+  }
+
+  const globe = new Globe(container)
+    .backgroundColor('#081321')
+    .globeImageUrl('https://cdn.jsdelivr.net/npm/three-globe/example/img/earth-blue-marble.jpg')
+    .pathsData(makeLines(countries))
+    .pathPoints(line => line.points)
+    .pathPointAlt(0.0007)
+    .pathResolution(1)
+    .pathTransitionDuration(0)
+    .pathColor(line => line.country ? 'rgba(235,245,255,0.15)' : 'rgba(180,220,255,0.24)')
+    .arcsData([])
+    .arcColor(arc => arc.isConnector
+      ? ['rgba(255, 107, 129, 0.9)', 'rgba(255, 212, 119, 0.95)']
+      : ['rgba(131, 220, 255, 0.92)', 'rgba(255, 212, 119, 0.98)'])
+    .arcDashLength(arc => arc.isConnector ? 0.22 : 0.48)
+    .arcDashGap(arc => arc.isConnector ? 0.18 : 0.22)
+    .arcDashAnimateTime(2200)
+    .arcStroke(arc => arc.isConnector ? 0.45 : 0.68);
+
+  const markers = new Map();
+  let selectedCities = [];
+  let customPin = null;
+  let airportPin = null; // 항로가 실제로 도착하는 국제공항 핀
+
+  function syncHtmlMarkers() {
+    const items = [...selectedCities];
+    if (airportPin) items.push(airportPin);
+    if (customPin) items.push(customPin);
+    globe.htmlElementsData(items);
+  }
+
+  // 모든 선택(도시 및 임의 지점)에서 가장 가까운 실제 국제공항으로만 항로 연결
+  function updateFlightRoute({ lat, lng, country }) {
+    airportPin = null;
+
+    // 1. 공해(바다)인 경우 항공 항로를 그리지 않음
+    if (!country) {
+      globe.arcsData([]);
+      syncHtmlMarkers();
+      flightVal.textContent = '해상 좌표 (직항 항로 없음)';
+      flightSub.textContent = '공해상 위치는 국제공항이 없어 항공 노선이 연결되지 않습니다.';
+      return;
+    }
+
+    // 2. 해당 국가 또는 인접 국가의 가장 가까운 실제 국제공항 탐색
+    const airport = findNearestInternationalAirport(country, lat, lng);
+    if (!airport) {
+      globe.arcsData([]);
+      syncHtmlMarkers();
+      flightVal.textContent = '국제공항 노선 정보 없음';
+      flightSub.textContent = '';
+      return;
+    }
+
+    const { distanceKm, durationText } = calcFlightMetrics(ICN_ORIGIN.lat, ICN_ORIGIN.lng, airport.lat, airport.lng);
+    const arcs = [];
+
+    if (distanceKm >= 80) {
+      arcs.push({
+        startLat: ICN_ORIGIN.lat,
+        startLng: ICN_ORIGIN.lng,
+        endLat: airport.lat,
+        endLng: airport.lng,
+        isConnector: false
+      });
+    }
+
+    // 선택한 위치와 실제 국제공항이 45km 이상 떨어져 있거나 경유 국가인 경우 공항~목적지 연결선 및 도착 공항 핀 표시
+    if (airport.isTransit || airport.groundDistKm > 45) {
+      arcs.push({
+        startLat: airport.lat,
+        startLng: airport.lng,
+        endLat: lat,
+        endLng: lng,
+        isConnector: true
+      });
+      airportPin = {
+        isAirportPin: true,
+        lat: airport.lat,
+        lng: airport.lng,
+        label: `✈️ ${airport.name}`
+      };
+    }
+
+    globe.arcsData(arcs);
+    syncHtmlMarkers();
+
+    if (distanceKm < 80) {
+      flightVal.textContent = `${airport.name} 권역 (국내/근거리)`;
+      flightSub.textContent = airport.note;
+    } else if (airport.isTransit) {
+      flightVal.textContent = `${airport.name} 경유 · 약 ${durationText}`;
+      flightSub.textContent = `${airport.note} (항공 ${distanceKm.toLocaleString('ko-KR')}km)`;
+    } else {
+      flightVal.textContent = `${airport.name} · 약 ${durationText}`;
+      flightSub.textContent = `${airport.note} (항공 ${distanceKm.toLocaleString('ko-KR')}km)`;
+    }
+  }
+
+  globe.htmlLat(item => (item.isCustomPin || item.isAirportPin) ? item.lat : item.geometry.coordinates[1])
+    .htmlLng(item => (item.isCustomPin || item.isAirportPin) ? item.lng : item.geometry.coordinates[0])
+    .htmlAltitude(0)
+    .htmlTransitionDuration(0)
+    .htmlElement(item => {
+      if (item.isAirportPin) {
+        const anchor = document.createElement('div');
+        anchor.className = 'airport-pin-anchor';
+        const dot = document.createElement('span');
+        dot.className = 'airport-pin-dot';
+        const label = document.createElement('span');
+        label.className = 'airport-pin-label';
+        label.textContent = item.label;
+        anchor.append(dot, label);
+        return anchor;
+      }
+
+      if (item.isCustomPin) {
+        const anchor = document.createElement('div');
+        anchor.className = 'custom-pin-anchor';
+        const pulse = document.createElement('span');
+        pulse.className = 'custom-pin-pulse';
+        const dot = document.createElement('span');
+        dot.className = 'custom-pin-dot';
+        const label = document.createElement('span');
+        label.className = 'custom-pin-label';
+        label.textContent = item.label || '선택 지점';
+
+        const tooltip = document.createElement('span');
+        tooltip.className = 'custom-pin-tooltip';
+        const coordText = '위도 ' + formatAngle(item.lat, 'N', 'S', 5) +
+          ' · 경도 ' + formatAngle(item.lng, 'E', 'W', 5);
+        tooltip.textContent = (item.label || '선택 지점') + ' · ' + coordText;
+
+        anchor.append(pulse, dot, label, tooltip);
+        item.el = { anchor, label, tooltip, coordText };
+        return anchor;
+      }
+
+      const city = item;
+      const anchor = document.createElement('div');
+      anchor.className = isCapital(city) ? 'city-anchor capital' : 'city-anchor';
+      const dot = document.createElement('span');
+      dot.className = 'city-dot';
+      const name = document.createElement('span');
+      name.className = 'city-name';
+      name.textContent = cityName(city);
+      const [lng, lat] = city.geometry.coordinates;
+      const tooltip = document.createElement('span');
+      tooltip.className = 'city-tooltip';
+      tooltip.textContent = cityName(city) + ' · 위도 ' + formatAngle(lat, 'N', 'S', 5) +
+        ' · 경도 ' + formatAngle(lng, 'E', 'W', 5);
+      anchor.append(dot, name, tooltip);
+      anchor.addEventListener('click', event => {
+        event.stopPropagation();
+        selectCity(city);
+      });
+      markers.set(city, {anchor, dot, name});
+      return anchor;
+    });
+
+  let active = null;
+  let hovered = null;
+  let activeCity = null;
+
+  function colorCountries() {
+    globe.pathColor(line => {
+      if (!line.country) return 'rgba(180,220,255,0.24)';
+      if (line.country === hovered) return '#85edff';
+      if (line.country === active) return 'rgba(133,237,255,0.55)';
+      return 'rgba(235,245,255,0.15)';
+    });
+  }
+
+  const overlaps = (a, b, gap) => a.left < b.right + gap && a.right + gap > b.left &&
+    a.top < b.bottom + gap && a.bottom + gap > b.top;
+  function layoutCities() {
+    const altitude = globe.pointOfView().altitude;
+    const playing = Boolean(round);
+    const dots = [];
+    const labels = [];
+    for (const city of selectedCities) {
+      const marker = markers.get(city);
+      if (!marker) continue;
+      const {anchor, dot, name} = marker;
+      const rect = dot.getBoundingClientRect();
+      const visible = rect.width > 0 && rect.right > 0 && rect.left < innerWidth &&
+        rect.bottom > 0 && rect.top < innerHeight && (playing || !dots.some(item => overlaps(rect, item, 13)));
+      anchor.style.visibility = visible ? 'visible' : 'hidden';
+      name.style.visibility = 'hidden';
+      name.style.top = '';
+      name.style.left = '';
+      if (visible) dots.push(rect);
+    }
+    if (!playing && altitude > 1.55) return;
+    for (const city of selectedCities) {
+      const marker = markers.get(city);
+      if (!marker || marker.anchor.style.visibility !== 'visible') continue;
+      let rect = marker.name.getBoundingClientRect();
+      if (playing) {
+        const dot = marker.dot.getBoundingClientRect();
+        const x = (dot.left + dot.right) / 2;
+        const y = (dot.top + dot.bottom) / 2;
+        marker.name.style.left = Math.max(4 - x, Math.min(8, innerWidth - rect.width - 4 - x)) + 'px';
+        const minOffset = Math.ceil(4 + rect.height / 2 - y);
+        const maxOffset = Math.floor(innerHeight - 4 - rect.height / 2 - y);
+        for (let step = 0; step <= selectedCities.length * 4; step++) {
+          const offset = (step % 2 ? -1 : 1) * Math.ceil(step / 2) * 18;
+          marker.name.style.top = Math.max(minOffset, Math.min(maxOffset, offset)) + 'px';
+          rect = marker.name.getBoundingClientRect();
+          if (!dots.some(item => overlaps(rect, item, 2)) &&
+              !labels.some(item => overlaps(rect, item, 5))) break;
+        }
+        marker.name.style.visibility = 'visible';
+        labels.push(rect);
+        continue;
+      }
+      if (rect.left < 0 || rect.right > innerWidth || rect.top < 0 || rect.bottom > innerHeight ||
+          dots.some(dot => overlaps(rect, dot, 2)) || labels.some(label => overlaps(rect, label, 5))) continue;
+      marker.name.style.visibility = 'visible';
+      labels.push(rect);
+    }
+  }
+
+  let pointer = null;
+  let frame = 0;
+  function refreshOverlays() {
+    if (frame) return;
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      const point = pointer && globe.toGlobeCoords(pointer.x, pointer.y);
+      const country = countryAt(point, regions);
+      if (country !== hovered) {
+        hovered = country;
+        colorCountries();
+      }
+      layoutCities();
+      const target = pointer && document.elementFromPoint(pointer.clientX, pointer.clientY);
+      pointerTooltip.hidden = !point || !target || !container.contains(target) ||
+        Boolean(target.closest('.city-dot, .city-name, .custom-pin-dot, .custom-pin-label'));
+      if (!pointerTooltip.hidden) {
+        showFlag(hoverFlag, country);
+        const areaText = country ? countryName(country) : getOceanRegionName(point.lat, point.lng);
+        hoverText.textContent = areaText + ' · 위도 ' + formatAngle(point.lat, 'N', 'S') +
+          ' · 경도 ' + formatAngle(point.lng, 'E', 'W');
+        const {offsetWidth, offsetHeight} = pointerTooltip;
+        const {clientX, clientY} = pointer;
+        const left = clientX + 14 + offsetWidth <= innerWidth ? clientX + 14 : clientX - offsetWidth - 14;
+        const top = clientY + 16 + offsetHeight <= innerHeight ? clientY + 16 : clientY - offsetHeight - 16;
+        pointerTooltip.style.left = Math.max(6, left) + 'px';
+        pointerTooltip.style.top = Math.max(6, top) + 'px';
+      }
+    });
+  }
+  container.addEventListener('pointermove', event => {
+    const rect = container.getBoundingClientRect();
+    pointer = {x: event.clientX - rect.left, y: event.clientY - rect.top,
+      clientX: event.clientX, clientY: event.clientY};
+    refreshOverlays();
+  });
+  container.addEventListener('pointerleave', () => { pointer = null; refreshOverlays(); });
+  globe.controls().addEventListener('change', refreshOverlays);
+
+  function focusCoords(lat, lng, altitude) {
+    const hasBottomCard = (!round && (!customPos || window.innerWidth <= 700)) || (round && round.solved);
+    const latOffset = hasBottomCard ? -9 * altitude : 0;
+    globe.pointOfView({lat: Math.max(-85, lat + latOffset), lng, altitude}, 800);
+  }
+
+  function focusCity(city, altitude) {
+    const [lng, lat] = city.geometry.coordinates;
+    focusCoords(lat, lng, altitude);
+  }
+
+  const card = document.querySelector('#city-card');
+  const cardHead = document.querySelector('#card-head');
+  const cardResetPosBtn = document.querySelector('#card-reset-pos');
+  const cardClose = document.querySelector('#card-close');
+  const cardFlag = document.querySelector('#city-card-flag');
+  const cardPinIcon = document.querySelector('#city-card-pin-icon');
+  const cardTitle = document.querySelector('#city-card-title');
+  const cardMeta = document.querySelector('#city-card-meta');
+  const flightVal = document.querySelector('#flight-val');
+  const flightSub = document.querySelector('#flight-sub');
+  const currencyTile = document.querySelector('#city-card-currency');
+  const currencyVal = document.querySelector('#currency-val');
+  const terrainTile = document.querySelector('#city-card-terrain');
+  const terrainVal = document.querySelector('#terrain-val');
+  const clockVal = document.querySelector('#clock-val');
+  const weatherVal = document.querySelector('#weather-val');
+  const sunVal = document.querySelector('#sun-val');
+  const forecastWrap = document.querySelector('#forecast-wrap');
+  const forecastBox = document.querySelector('#city-card-forecast');
+  let cityRequest = null;
+  let clockTimer = null;
+
+  let cardCustomPos = null;
+  function applyCardPosition(left, top) {
+    card.classList.add('moved');
+    const rect = card.getBoundingClientRect();
+    const maxLeft = Math.max(8, window.innerWidth - rect.width - 8);
+    const maxTop = Math.max(8, window.innerHeight - Math.min(rect.height, 120) - 8);
+    const clampedLeft = Math.min(Math.max(8, left), maxLeft);
+    const clampedTop = Math.min(Math.max(8, top), maxTop);
+    cardCustomPos = { left: clampedLeft, top: clampedTop };
+    card.style.left = clampedLeft + 'px';
+    card.style.top = clampedTop + 'px';
+    card.style.bottom = 'auto';
+    card.style.transform = 'none';
+    card.style.maxHeight = Math.max(180, window.innerHeight - clampedTop - 16) + 'px';
+    cardResetPosBtn.hidden = false;
+  }
+
+  function resetCardPosition() {
+    cardCustomPos = null;
+    card.classList.remove('moved');
+    card.style.left = '';
+    card.style.top = '';
+    card.style.bottom = '';
+    card.style.transform = '';
+    card.style.maxHeight = '';
+    cardResetPosBtn.hidden = true;
+  }
+  cardResetPosBtn.addEventListener('click', event => {
+    event.stopPropagation();
+    resetCardPosition();
+  });
+
+  let cardDragState = null;
+  cardHead.addEventListener('pointerdown', event => {
+    if (!card.classList.contains('floating') || event.target.closest('button')) return;
+    const rect = card.getBoundingClientRect();
+    cardDragState = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      origLeft: rect.left,
+      origTop: rect.top,
+      moved: false
+    };
+    cardHead.setPointerCapture(event.pointerId);
+    card.classList.add('dragging');
+  });
+
+  cardHead.addEventListener('pointermove', event => {
+    if (!cardDragState || event.pointerId !== cardDragState.pointerId) return;
+    const dx = event.clientX - cardDragState.startX;
+    const dy = event.clientY - cardDragState.startY;
+    if (Math.hypot(dx, dy) > 4) cardDragState.moved = true;
+    if (cardDragState.moved) {
+      applyCardPosition(cardDragState.origLeft + dx, cardDragState.origTop + dy);
+    }
+  });
+
+  function endCardDrag(event) {
+    if (!cardDragState || event.pointerId !== cardDragState.pointerId) return;
+    card.classList.remove('dragging');
+    cardDragState = null;
+  }
+  cardHead.addEventListener('pointerup', endCardDrag);
+  cardHead.addEventListener('pointercancel', endCardDrag);
+
+  function updateCityButtons() {
+    for (const btn of list.querySelectorAll('button')) {
+      btn.classList.toggle('is-active', btn.dataset.cityId === (activeCity ? cityName(activeCity) : ''));
+    }
+  }
+
+  function clearPins() {
+    if (customPin || airportPin) {
+      customPin = null;
+      airportPin = null;
+      syncHtmlMarkers();
+    }
+  }
+
+  function closeCityCard() {
+    cityRequest?.abort();
+    cityRequest = null;
+    clearInterval(clockTimer);
+    clockTimer = null;
+    activeCity = null;
+    clearPins();
+    updateCityButtons();
+    card.hidden = true;
+    card.classList.remove('floating');
+    resetCardPosition();
+    forecastWrap.hidden = true;
+    globe.arcsData([]);
+  }
+  cardClose.addEventListener('click', closeCityCard);
+
+  function renderClock(zone) {
+    const now = new Date();
+    const korea = 'Asia/Seoul';
+    const local = new Intl.DateTimeFormat('ko-KR', {
+      timeZone: zone, month: 'short', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+    }).format(now);
+    const offset = new Intl.DateTimeFormat('en', {timeZone: zone, timeZoneName: 'longOffset'})
+      .formatToParts(now).find(part => part.type === 'timeZoneName').value;
+    const parts = offset.match(/([+-])(\d{2}):(\d{2})/);
+    const minutes = parts ? (parts[1] === '-' ? -1 : 1) * (+parts[2] * 60 + +parts[3]) : 0;
+    const difference = minutes - 540;
+    const hours = Math.floor(Math.abs(difference) / 60);
+    const remainder = Math.abs(difference) % 60;
+    const duration = [hours && hours + '시간', remainder && remainder + '분'].filter(Boolean).join(' ');
+    const date = timeZone => new Intl.DateTimeFormat('sv-SE', {timeZone, dateStyle: 'short'}).format(now);
+    const dayDifference = Math.round((Date.parse(date(zone)) - Date.parse(date(korea))) / 86400000);
+    const day = dayDifference < 0 ? ' (전날)' : dayDifference > 0 ? ' (다음 날)' : '';
+    clockVal.textContent = `${local} · ` +
+      (difference ? `한국보다 ${duration} ${difference < 0 ? '느림' : '빠름'}` : '한국과 시차 없음') + day;
+  }
+
+  function weatherLabel(code) {
+    if (code === 0) return '맑음';
+    if (code === 1 || code === 2) return '구름 조금';
+    if (code === 3) return '흐림';
+    if (code === 45 || code === 48) return '안개';
+    if (code >= 51 && code <= 57) return '이슬비';
+    if (code >= 61 && code <= 67) return '비';
+    if (code >= 71 && code <= 77) return '눈';
+    if (code >= 80 && code <= 82) return '소나기';
+    if (code >= 85 && code <= 86) return '눈 소나기';
+    if (code >= 95 && code <= 99) return '뇌우';
+    return '정보 없음';
+  }
+
+  function weatherIcon(code) {
+    if (code === 0) return '☀️';
+    if (code === 1 || code === 2) return '⛅';
+    if (code === 3) return '☁️';
+    if (code === 45 || code === 48) return '🌫️';
+    if (code >= 51 && code <= 67) return '🌧️';
+    if (code >= 71 && code <= 77) return '❄️';
+    if (code >= 80 && code <= 82) return '🌦️';
+    if (code >= 85 && code <= 86) return '🌨️';
+    if (code >= 95 && code <= 99) return '⛈️';
+    return '🌡️';
+  }
+
+  function renderForecast(daily) {
+    if (!daily?.time?.length) {
+      forecastWrap.hidden = true;
+      return;
+    }
+    const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+    forecastBox.replaceChildren();
+    daily.time.forEach((dateStr, i) => {
+      const [y, m, d] = dateStr.split('-').map(Number);
+      const dayOfWeek = dayNames[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+      const col = document.createElement('div');
+      col.className = 'fc-day';
+
+      const dateEl = document.createElement('span');
+      dateEl.className = 'fc-date';
+      dateEl.textContent = i === 0 ? '오늘' : `${m}/${d}(${dayOfWeek})`;
+
+      const iconEl = document.createElement('span');
+      iconEl.className = 'fc-icon';
+      iconEl.textContent = weatherIcon(daily.weather_code?.[i]);
+      iconEl.title = weatherLabel(daily.weather_code?.[i]);
+
+      const tempEl = document.createElement('span');
+      tempEl.className = 'fc-temp';
+      const maxT = Math.round(daily.temperature_2m_max?.[i]);
+      const minT = Math.round(daily.temperature_2m_min?.[i]);
+      tempEl.innerHTML = `<span class="fc-max">${Number.isFinite(maxT) ? maxT + '°' : '-'}</span>/<span class="fc-min">${Number.isFinite(minT) ? minT + '°' : '-'}</span>`;
+
+      const rainProb = daily.precipitation_probability_max?.[i];
+      const rainEl = document.createElement('span');
+      rainEl.className = 'fc-rain';
+      rainEl.textContent = Number.isFinite(rainProb) && rainProb > 0 ? `💧${rainProb}%` : '';
+
+      col.append(dateEl, iconEl, tempEl, rainEl);
+      forecastBox.append(col);
+    });
+    forecastWrap.hidden = false;
+  }
+
+  async function renderCurrency(country) {
+    const iso2 = countryCode(country);
+    const info = COUNTRY_CURRENCIES[iso2];
+    if (!info) {
+      currencyTile.hidden = true;
+      return;
+    }
+    const [code, unitName] = info;
+    currencyTile.hidden = false;
+    if (code === 'KRW') {
+      currencyVal.textContent = '대한민국 원 (KRW)';
+      return;
+    }
+    currencyVal.textContent = `${unitName}(${code}) 불러오는 중…`;
+    const rates = await getKrwRates();
+    if (!rates || !rates[code]) {
+      currencyVal.textContent = `${unitName} (${code})`;
+      return;
+    }
+    const per1000Krw = rates[code] * 1000;
+    const formattedForeign = per1000Krw >= 100
+      ? Math.round(per1000Krw).toLocaleString('ko-KR')
+      : per1000Krw.toFixed(2);
+    currencyVal.textContent = `1,000원 ≈ ${formattedForeign} ${unitName}`;
+  }
+
+  async function fetchReverseGeocode(lat, lng, signal) {
+    try {
+      const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat.toFixed(5)}&lon=${lng.toFixed(5)}&zoom=10&accept-language=ko`;
+      const res = await fetch(url, { signal });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }
+
+  async function loadLocationWeatherAndMeta(lat, lng, request, inGame, isCustomLocation, country) {
+    const query = new URLSearchParams({
+      latitude: lat,
+      longitude: lng,
+      timezone: 'auto',
+      forecast_days: 7,
+      current: 'temperature_2m,apparent_temperature,weather_code,is_day',
+      daily: 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset'
+    });
+
+    const weatherPromise = fetch('https://api.open-meteo.com/v1/forecast?' + query, {signal: request.signal})
+      .then(r => r.ok ? r.json() : Promise.reject(new Error('날씨 요청 실패')));
+
+    const geoPromise = isCustomLocation ? fetchReverseGeocode(lat, lng, request.signal) : Promise.resolve(null);
+
+    const [weatherResult, geoResult] = await Promise.allSettled([weatherPromise, geoPromise]);
+    if (cityRequest !== request) return;
+
+    if (isCustomLocation) {
+      const addr = geoResult.status === 'fulfilled' ? geoResult.value?.address : null;
+      const placeName = addr
+        ? [addr.city || addr.county || addr.town || addr.village || addr.state || addr.province, addr.country]
+            .filter(Boolean).join(', ')
+        : null;
+      const oceanName = !country ? getOceanRegionName(lat, lng) : null;
+      const resolvedTitle = placeName || (country ? `${countryName(country)} 내륙 지역` : oceanName);
+
+      cardTitle.textContent = resolvedTitle;
+      if (customPin) {
+        customPin.label = resolvedTitle;
+        if (customPin.el?.label) customPin.el.label.textContent = resolvedTitle;
+        if (customPin.el?.tooltip) customPin.el.tooltip.textContent = `${resolvedTitle} · ${customPin.el.coordText}`;
+      }
+      const regionKind = country ? '선택 지점 (육지)' : '선택 지점 (해역)';
+      cardMeta.textContent = `${regionKind} · ${formatAngle(lat, 'N', 'S')}, ${formatAngle(lng, 'E', 'W')}`;
+    }
+
+    if (weatherResult.status === 'fulfilled') {
+      const data = weatherResult.value;
+      renderClock(data.timezone);
+      clockTimer = setInterval(() => renderClock(data.timezone), 15000);
+
+      if (Number.isFinite(data.elevation)) {
+        terrainTile.hidden = false;
+        const elev = Math.round(data.elevation);
+        terrainVal.textContent = country
+          ? `해발 ${elev.toLocaleString('ko-KR')}m`
+          : `해수면 기준 (${elev}m)`;
+      }
+
+      const current = data.current ?? {};
+      const temperature = value => Number.isFinite(value) ? value + '°C' : '—';
+      const time = value => value?.split('T')[1]?.slice(0, 5) || '—';
+      weatherVal.textContent = `${weatherIcon(current.weather_code)} ${weatherLabel(current.weather_code)} ${temperature(current.temperature_2m)} (체감 ${temperature(current.apparent_temperature)})`;
+      const daylight = current.is_day === 1 ? '낮' : current.is_day === 0 ? '밤' : '';
+      sunVal.textContent = `${daylight ? daylight + ' · ' : ''}일출 ${time(data.daily?.sunrise?.[0])} · 일몰 ${time(data.daily?.sunset?.[0])}`;
+      renderForecast(data.daily);
+    } else {
+      clockVal.textContent = '시간대 확인 불가';
+      weatherVal.textContent = '날씨를 불러오지 못했습니다.';
+    }
+  }
+
+  async function showCityCard(city, country, inGame) {
+    closeCityCard();
+    activeCity = city;
+    updateCityButtons();
+    if (!inGame && window.innerWidth <= 700) {
+      setSheetCollapsed(false);
+    }
+
+    const request = new AbortController();
+    cityRequest = request;
+    if (inGame) {
+      card.classList.add('floating');
+      document.body.append(card);
+    } else {
+      card.classList.remove('floating');
+      document.querySelector('.panel-body').insertBefore(card, document.querySelector('.panel-footer'));
+    }
+
+    const [lng, lat] = city.geometry.coordinates;
+    cardTitle.textContent = cityName(city);
+    cardPinIcon.hidden = true;
+    terrainTile.hidden = true;
+    showFlag(cardFlag, country);
+    cardMeta.textContent = (country ? countryName(country) : '') + (isCapital(city) ? ' · 수도' : '') +
+      ' · ' + formatAngle(lat, 'N', 'S') + ', ' + formatAngle(lng, 'E', 'W');
+
+    updateFlightRoute({ lat, lng, country });
+    renderCurrency(country);
+
+    clockVal.textContent = '불러오는 중…';
+    weatherVal.textContent = '날씨 불러오는 중…';
+    sunVal.textContent = '';
+    card.hidden = false;
+    if (!inGame) card.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+
+    await loadLocationWeatherAndMeta(lat, lng, request, inGame, false, country);
+  }
+
+  async function showCustomPointCard(lat, lng, country) {
+    closeCityCard();
+    if (window.innerWidth <= 700) {
+      setSheetCollapsed(false);
+    }
+
+    const initialLabel = country ? `${countryName(country)} 탐색 지점` : getOceanRegionName(lat, lng);
+    customPin = {
+      isCustomPin: true,
+      lat,
+      lng,
+      label: initialLabel
+    };
+
+    const request = new AbortController();
+    cityRequest = request;
+    card.classList.remove('floating');
+    document.querySelector('.panel-body').insertBefore(card, document.querySelector('.panel-footer'));
+
+    cardTitle.textContent = `${initialLabel} 확인 중…`;
+    if (country) {
+      showFlag(cardFlag, country);
+      cardPinIcon.hidden = true;
+    } else {
+      cardFlag.hidden = true;
+      cardPinIcon.hidden = false;
+    }
+    cardMeta.textContent = `${country ? '선택 지점 (육지)' : '선택 지점 (해역)'} · ${formatAngle(lat, 'N', 'S')}, ${formatAngle(lng, 'E', 'W')}`;
+
+    updateFlightRoute({ lat, lng, country });
+    renderCurrency(country);
+
+    terrainTile.hidden = false;
+    terrainVal.textContent = '고도 확인 중…';
+    clockVal.textContent = '불러오는 중…';
+    weatherVal.textContent = '날씨 불러오는 중…';
+    sunVal.textContent = '';
+    card.hidden = false;
+    card.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+
+    await loadLocationWeatherAndMeta(lat, lng, request, false, true, country);
+  }
+
+  let round = null;
+  let roundTimer = null;
+  let reflectionIndex = 0;
+  let savedCountry = null;
+
+  function stopRoundTimer() {
+    clearInterval(roundTimer);
+    roundTimer = null;
+  }
+
+  function finishRound(isTimeout) {
+    if (!round || round.solved) return;
+    round.solved = true;
+    stopRoundTimer();
+    timerBadge.hidden = true;
+
+    const { country, city } = round.target;
+    if (isTimeout) {
+      if (active !== country) choose(country);
+      feedback.textContent = `시간 초과! 정답은 ${countryName(country)}의 ${cityName(city)}입니다.`;
+    } else {
+      const elapsed = ((performance.now() - round.started) / 1000).toFixed(1);
+      feedback.textContent = `정답! ${cityName(city)} · ${elapsed}초 걸렸어요.`;
+    }
+
+    reflectionPrompt.textContent = reflectionQuestions[reflectionIndex];
+    reflection.hidden = false;
+    reflectionIndex = (reflectionIndex + 1) % reflectionQuestions.length;
+    zoomHint.hidden = true;
+    select.disabled = true;
+    next.hidden = false;
+
+    showCityCard(city, country, true);
+    focusCity(city, 0.85);
+  }
+
+  function selectCity(city) {
+    if (!round) {
+      showCityCard(city, active || countryByCode.get(city.properties.ADM0_A3) || null, false);
+      focusCity(city, 0.85);
+      return;
+    }
+    if (round.solved || active !== round.target.country || !selectedCities.includes(city)) return;
+    if (city !== round.target.city) {
+      feedback.textContent = cityName(city) + '을(를) 선택했어요. 다른 도시를 골라보세요.';
+      return;
+    }
+    finishRound(false);
+  }
+
+  function choose(country, extraCity = null, shouldFocus = true) {
+    closeCityCard();
+    active = country;
+    select.value = country ? String(countries.indexOf(country)) : '';
+    colorCountries();
+    const baseCities = country ? [...(cityGroups.get(country.properties.ADM0_A3) || [])]
+      .sort((a, b) => Number(isCapital(b)) - Number(isCapital(a)) || population(b) - population(a))
+      .slice(0, 6) : [];
+    if (extraCity && !baseCities.includes(extraCity)) baseCities.unshift(extraCity);
+    selectedCities = baseCities;
+    for (const city of markers.keys()) if (!selectedCities.includes(city)) markers.delete(city);
+    syncHtmlMarkers();
+    refreshOverlays();
+    list.replaceChildren();
+    showFlag(selectedFlag, country);
+    status.textContent = country
+      ? countryName(country) + (selectedCities.length ? ' · 주요 도시 ' + selectedCities.length + '곳 (또는 아무 지점 클릭)' : ' · 지도에서 원하는 지점을 클릭하세요')
+      : '지구본의 국가나 바다 어디든 클릭·검색하세요.';
+    for (const city of round ? [] : selectedCities) {
+      const row = document.createElement('li');
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.dataset.cityId = cityName(city);
+      if (isCapital(city)) button.classList.add('is-capital');
+      button.textContent = (isCapital(city) ? '★ ' : '') + cityName(city);
+      button.onclick = () => selectCity(city);
+      row.append(button);
+      list.append(row);
+    }
+    if (shouldFocus && !extraCity && selectedCities.length) focusCity(selectedCities[0], 1.35);
+    if (country && !round && window.innerWidth <= 700) {
+      setSheetCollapsed(false);
+    }
+  }
+
+  const searchIndex = [];
+  for (const country of countries) {
+    const ko = countryName(country);
+    const en = country.properties.NAME_EN || country.properties.NAME || country.properties.ADMIN || '';
+    searchIndex.push({
+      type: 'country',
+      country,
+      label: ko,
+      sub: '국가',
+      keywords: (ko + ' ' + en + ' ' + (country.properties.ISO_A2 || '')).toLowerCase(),
+      weight: 2000000000
+    });
+  }
+  for (const city of cities) {
+    const code = city.properties.ADM0_A3;
+    const country = countryByCode.get(code) || null;
+    const label = cityName(city);
+    const cName = country ? countryName(country) : (city.properties.ADM0NAME || '');
+    const p = city.properties;
+    const altNames = [p.NAME, p.NAMEASCII, p.NAME_EN, p.name_en, p.NAME_KO, p.name_ko, p.NAMEALT].filter(Boolean).join(' ');
+    searchIndex.push({
+      type: 'city',
+      city,
+      country,
+      label,
+      sub: cName + (isCapital(city) ? ' · 수도' : ''),
+      keywords: (label + ' ' + altNames + ' ' + cName).toLowerCase(),
+      weight: (isCapital(city) ? 500000000 : 0) + population(city)
+    });
+  }
+
+  let currentMatches = [];
+  let activeResultIndex = -1;
+
+  function closeSearch() {
+    searchResults.hidden = true;
+    searchResults.replaceChildren();
+    currentMatches = [];
+    activeResultIndex = -1;
+  }
+
+  function applySearchItem(item) {
+    closeSearch();
+    searchInput.value = item.label;
+    searchInput.blur();
+    if (item.type === 'country') {
+      choose(item.country);
+      if (!cityGroups.get(item.country.properties.ADM0_A3)?.length) {
+        const region = regions.find(r => r.country === item.country);
+        if (region) {
+          globe.pointOfView({lat: (region.south + region.north) / 2, lng: (region.west + region.east) / 2, altitude: 1.5}, 800);
+        }
+      }
+    } else {
+      choose(item.country, item.city);
+      selectCity(item.city);
+    }
+  }
+
+  function highlightResult(index) {
+    const buttons = searchResults.querySelectorAll('button');
+    buttons.forEach((btn, i) => btn.setAttribute('aria-selected', String(i === index)));
+    if (buttons[index]) buttons[index].scrollIntoView({block: 'nearest'});
+  }
+
+  function updateSearch() {
+    const raw = searchInput.value.trim().toLowerCase();
+    if (!raw) {
+      closeSearch();
+      return;
+    }
+    const terms = raw.split(/\s+/);
+    currentMatches = searchIndex
+      .filter(item => terms.every(term => item.keywords.includes(term)))
+      .sort((a, b) => {
+        const aStarts = a.label.toLowerCase().startsWith(raw) ? 1 : 0;
+        const bStarts = b.label.toLowerCase().startsWith(raw) ? 1 : 0;
+        return (bStarts - aStarts) || (b.weight - a.weight);
+      })
+      .slice(0, 12);
+
+    searchResults.replaceChildren();
+    activeResultIndex = -1;
+    if (!currentMatches.length) {
+      const empty = document.createElement('li');
+      empty.style.cssText = 'padding: 8px 10px; font-size: 13px; color: #9ab3cc';
+      empty.textContent = '일치하는 도시나 국가가 없어요.';
+      searchResults.append(empty);
+      searchResults.hidden = false;
+      return;
+    }
+
+    currentMatches.forEach((item) => {
+      const li = document.createElement('li');
+      li.setAttribute('role', 'option');
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.setAttribute('aria-selected', 'false');
+
+      const main = document.createElement('span');
+      main.className = 'search-item-main';
+      const url = flagUrl(item.country);
+      if (url) {
+        const img = document.createElement('img');
+        img.className = 'country-flag';
+        img.src = url;
+        img.alt = '';
+        img.addEventListener('error', () => { img.hidden = true; });
+        main.append(img);
+      }
+      main.append(document.createTextNode(item.label));
+
+      const sub = document.createElement('span');
+      sub.className = 'search-item-sub';
+      sub.textContent = item.sub;
+
+      btn.append(main, sub);
+      btn.addEventListener('click', () => applySearchItem(item));
+      li.append(btn);
+      searchResults.append(li);
+    });
+    searchResults.hidden = false;
+  }
+
+  searchInput.addEventListener('input', updateSearch);
+  searchInput.addEventListener('focus', () => { if (searchInput.value.trim()) updateSearch(); });
+  searchInput.addEventListener('keydown', event => {
+    if (searchResults.hidden || !currentMatches.length) return;
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      activeResultIndex = (activeResultIndex + 1) % currentMatches.length;
+      highlightResult(activeResultIndex);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      activeResultIndex = (activeResultIndex - 1 + currentMatches.length) % currentMatches.length;
+      highlightResult(activeResultIndex);
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      const chosen = currentMatches[activeResultIndex >= 0 ? activeResultIndex : 0];
+      if (chosen) applySearchItem(chosen);
+    } else if (event.key === 'Escape') {
+      closeSearch();
+    }
+  });
+  document.addEventListener('click', event => {
+    if (!event.target.closest('.search-wrap')) closeSearch();
+  });
+
+  const questions = countries.flatMap(country => {
+    const majorCities = [...(cityGroups.get(country.properties.ADM0_A3) || [])]
+      .sort((a, b) => Number(isCapital(b)) - Number(isCapital(a)) || population(b) - population(a))
+      .slice(0, 6);
+    return majorCities.map(city => ({country, city}));
+  });
+  const koreanQuestions = questions.filter(item => item.country.properties.ADM0_A3 === 'KOR');
+  const randomItem = items => items[Math.floor(Math.random() * items.length)];
+
+  function startRound(target) {
+    stopRoundTimer();
+    reflection.hidden = true;
+    round = {target, started: performance.now(), solved: false};
+    choose(null);
+    next.hidden = true;
+    zoomHint.hidden = true;
+    question.textContent = countryName(target.country) + '의 ' + cityName(target.city) + '을(를) 찾아보세요.';
+    feedback.textContent = '나라를 클릭하세요.';
+
+    timerBadge.hidden = false;
+    timerBadge.classList.remove('urgent');
+    timerBadge.textContent = '⏱ 60초';
+    roundTimer = setInterval(() => {
+      if (!round || round.solved) {
+        stopRoundTimer();
+        return;
+      }
+      const elapsedSec = Math.floor((performance.now() - round.started) / 1000);
+      const remaining = Math.max(0, 60 - elapsedSec);
+      timerBadge.textContent = `⏱ ${remaining}초`;
+      timerBadge.classList.toggle('urgent', remaining <= 10);
+      if (remaining <= 0) {
+        finishRound(true);
+      }
+    }, 250);
+  }
+
+  function selectCountry(country) {
+    if (!round) {
+      choose(country);
+      return;
+    }
+    if (round.solved) return;
+    if (country !== round.target.country) {
+      zoomHint.hidden = true;
+      choose(null);
+      feedback.textContent = country
+        ? countryName(country) + '을(를) 선택했어요. 문제에 나온 나라를 찾아보세요.'
+        : '지구본에서 먼저 나라를 선택하세요.';
+      return;
+    }
+    if (active !== country) choose(country);
+    zoomHint.hidden = false;
+    feedback.textContent = '도시를 클릭하세요.';
+  }
+
+  browse.onclick = () => {
+    if (!round) return;
+    stopRoundTimer();
+    round = null;
+    quiz.hidden = next.hidden = timerBadge.hidden = true;
+    select.disabled = false;
+    searchInput.disabled = false;
+    explore.hidden = false;
+    explore.style.display = '';
+    game.setAttribute('aria-pressed', 'false');
+    browse.setAttribute('aria-pressed', 'true');
+    choose(savedCountry);
+  };
+  game.onclick = () => {
+    if (round) return;
+    closeSearch();
+    savedCountry = active;
+    quiz.hidden = false;
+    explore.hidden = true;
+    explore.style.display = 'none';
+    select.disabled = true;
+    searchInput.disabled = true;
+    game.setAttribute('aria-pressed', 'true');
+    browse.setAttribute('aria-pressed', 'false');
+    globe.pointOfView({lat: 15, lng: 0, altitude: 2.8});
+    startRound(randomItem(koreanQuestions));
+  };
+  next.onclick = () => startRound(randomItem(questions.filter(item => item !== round.target)));
+  game.disabled = koreanQuestions.length === 0 || questions.length < 2;
+  if (game.disabled) game.title = '출제 데이터 없음';
+
+  let pressed = null;
+  container.addEventListener('pointerdown', event => {
+    if (event.isPrimary && event.button === 0) pressed = [event.clientX, event.clientY];
+  });
+  container.addEventListener('pointercancel', () => { pressed = null; });
+  container.addEventListener('click', event => {
+    const start = pressed;
+    pressed = null;
+    if (!start || Math.hypot(event.clientX - start[0], event.clientY - start[1]) > 5) return;
+    const rect = container.getBoundingClientRect();
+    const point = globe.toGlobeCoords(event.clientX - rect.left, event.clientY - rect.top);
+    if (!point) return;
+
+    const country = countryAt(point, regions);
+
+    if (round) {
+      if (country) selectCountry(country);
+      return;
+    }
+
+    if (country !== active) {
+      choose(country, null, false);
+    }
+    showCustomPointCard(point.lat, point.lng, country);
+    const currentAlt = globe.pointOfView().altitude;
+    focusCoords(point.lat, point.lng, Math.min(currentAlt, 1.35));
+  });
+
+  const ordered = countries.map((country, index) => ({name: countryName(country), index}))
+    .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+  for (const item of ordered) select.add(new Option(item.name, String(item.index)));
+  select.onchange = () => {
+    if (!round) {
+      searchInput.value = '';
+      choose(select.value === '' ? null : countries[Number(select.value)]);
+    }
+  };
+  select.disabled = false;
+  searchInput.disabled = false;
+  const resize = () => {
+    globe.width(window.innerWidth).height(window.innerHeight);
+    if (customPos && window.innerWidth > 700) {
+      applyPanelPosition(customPos.left, customPos.top);
+    }
+    if (cardCustomPos && card.classList.contains('floating')) {
+      applyCardPosition(cardCustomPos.left, cardCustomPos.top);
+    }
+    refreshOverlays();
+  };
+  window.addEventListener('resize', resize);
+  resize();
+
+  globe.pointOfView({lat: 33, lng: 127.5, altitude: 2.15});
+  choose(null);
+  requestAnimationFrame(() => splash.classList.add('fade-out'));
+}
+start().catch(error => {
+  splash.classList.add('fade-out');
+  status.textContent = '지구본을 열 수 없습니다. 인터넷 연결과 WebGL 지원을 확인해 주세요.';
+  console.error(error);
+});
+</script>
+</body>
+</html>
