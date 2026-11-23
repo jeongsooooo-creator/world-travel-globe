@@ -284,6 +284,16 @@ button { color: #a9ddff; background: transparent; border: 0; padding: 3px; curso
   color: #ffe6a8; font: 600 11px system-ui; white-space: nowrap;
 }
 
+#center-location { display: none; }
+@media (max-width: 700px) {
+  #center-location:not([hidden]) {
+    display: block; position: fixed; z-index: 1050; top: calc(62px + env(safe-area-inset-top));
+    left: 50%; transform: translateX(-50%); max-width: calc(100vw - 24px);
+    padding: 6px 13px; border: 1px solid #5a9abc; border-radius: 999px;
+    background: rgba(8, 25, 42, .92); color: #d8f7ff; font-weight: 700;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none;
+  }
+}
 /* 📱 모바일 반응형 바텀 시트 레이아웃 */
 @media (max-width: 700px) {
   aside#explore {
@@ -404,6 +414,7 @@ button { color: #a9ddff; background: transparent; border: 0; padding: 3px; curso
 </div>
 
 <div id="globe"></div>
+<div id="center-location" hidden aria-live="off"></div>
 <div id="pointer-tooltip" aria-hidden="true" hidden><img id="hover-flag" class="country-flag" alt="" hidden><span id="hover-text"></span></div>
 
 <div id="modes" role="group" aria-label="지구본 모드">
@@ -585,6 +596,8 @@ const hoverFlag = document.querySelector('#hover-flag');
 const hoverText = document.querySelector('#hover-text');
 const selectedFlag = document.querySelector('#selected-flag');
 const pointerTooltip = document.querySelector('#pointer-tooltip');
+const centerLocation = document.querySelector('#center-location');
+const mobileView = window.matchMedia('(max-width: 700px)');
 const container = document.querySelector('#globe');
 const list = document.querySelector('#cities');
 const displayNames = new Intl.DisplayNames(['ko'], {type: 'region', fallback: 'none'});
@@ -1141,10 +1154,10 @@ async function start() {
 
   function colorCountries() {
     globe.pathColor(line => {
-      if (!line.country) return 'rgba(180,220,255,0.24)';
+      if (!line.country) return mobileView.matches ? 'rgba(180,220,255,0.42)' : 'rgba(180,220,255,0.24)';
       if (line.country === hovered) return '#85edff';
       if (line.country === active) return 'rgba(133,237,255,0.55)';
-      return 'rgba(235,245,255,0.15)';
+      return mobileView.matches ? 'rgba(235,245,255,0.38)' : 'rgba(235,245,255,0.15)';
     });
   }
 
@@ -1200,35 +1213,74 @@ async function start() {
 
   let pointer = null;
   let frame = 0;
+  let centerTimer = null;
+  let pendingCenterKey = null;
+  let shownCenterKey = null;
+  function resetCenterLocation() {
+    clearTimeout(centerTimer);
+    centerTimer = null;
+    pendingCenterKey = null;
+    shownCenterKey = null;
+    centerLocation.hidden = true;
+  }
   function refreshOverlays() {
     if (frame) return;
     frame = requestAnimationFrame(() => {
       frame = 0;
-      const point = pointer && globe.toGlobeCoords(pointer.x, pointer.y);
-      const country = countryAt(point, regions);
-      if (country !== hovered) {
-        hovered = country;
-        colorCountries();
+      if (mobileView.matches) {
+        pointerTooltip.hidden = true;
+        if (round) {
+          resetCenterLocation();
+          if (hovered) { hovered = null; colorCountries(); }
+        } else {
+          const rect = container.getBoundingClientRect();
+          const point = globe.toGlobeCoords(rect.width / 2, rect.height / 2);
+          const country = point && countryAt(point, regions);
+          const label = point ? (country ? countryName(country) : getOceanRegionName(point.lat, point.lng)) : '';
+          const key = country || label;
+          if (key !== pendingCenterKey) {
+            clearTimeout(centerTimer);
+            pendingCenterKey = key;
+            centerTimer = setTimeout(() => {
+              centerTimer = null;
+              if (!mobileView.matches || round || pendingCenterKey !== key) return;
+              shownCenterKey = key;
+              centerLocation.textContent = label;
+              centerLocation.hidden = !label;
+              if (hovered !== country) { hovered = country; colorCountries(); }
+            }, 140);
+          }
+          if (!point && shownCenterKey !== null) {
+            resetCenterLocation();
+            if (hovered) { hovered = null; colorCountries(); }
+          }
+        }
+      } else {
+        if (!centerLocation.hidden || pendingCenterKey !== null) resetCenterLocation();
+        const point = pointer && globe.toGlobeCoords(pointer.x, pointer.y);
+        const country = countryAt(point, regions);
+        if (country !== hovered) { hovered = country; colorCountries(); }
+        const target = pointer && document.elementFromPoint(pointer.clientX, pointer.clientY);
+        pointerTooltip.hidden = !point || !target || !container.contains(target) ||
+          Boolean(target.closest('.city-dot, .city-name, .custom-pin-dot, .custom-pin-label'));
+        if (!pointerTooltip.hidden) {
+          showFlag(hoverFlag, country);
+          const areaText = country ? countryName(country) : getOceanRegionName(point.lat, point.lng);
+          hoverText.textContent = areaText + ' · 위도 ' + formatAngle(point.lat, 'N', 'S') +
+            ' · 경도 ' + formatAngle(point.lng, 'E', 'W');
+          const {offsetWidth, offsetHeight} = pointerTooltip;
+          const {clientX, clientY} = pointer;
+          const left = clientX + 14 + offsetWidth <= innerWidth ? clientX + 14 : clientX - offsetWidth - 14;
+          const top = clientY + 16 + offsetHeight <= innerHeight ? clientY + 16 : clientY - offsetHeight - 16;
+          pointerTooltip.style.left = Math.max(6, left) + 'px';
+          pointerTooltip.style.top = Math.max(6, top) + 'px';
+        }
       }
       layoutCities();
-      const target = pointer && document.elementFromPoint(pointer.clientX, pointer.clientY);
-      pointerTooltip.hidden = !point || !target || !container.contains(target) ||
-        Boolean(target.closest('.city-dot, .city-name, .custom-pin-dot, .custom-pin-label'));
-      if (!pointerTooltip.hidden) {
-        showFlag(hoverFlag, country);
-        const areaText = country ? countryName(country) : getOceanRegionName(point.lat, point.lng);
-        hoverText.textContent = areaText + ' · 위도 ' + formatAngle(point.lat, 'N', 'S') +
-          ' · 경도 ' + formatAngle(point.lng, 'E', 'W');
-        const {offsetWidth, offsetHeight} = pointerTooltip;
-        const {clientX, clientY} = pointer;
-        const left = clientX + 14 + offsetWidth <= innerWidth ? clientX + 14 : clientX - offsetWidth - 14;
-        const top = clientY + 16 + offsetHeight <= innerHeight ? clientY + 16 : clientY - offsetHeight - 16;
-        pointerTooltip.style.left = Math.max(6, left) + 'px';
-        pointerTooltip.style.top = Math.max(6, top) + 'px';
-      }
     });
   }
   container.addEventListener('pointermove', event => {
+    if (mobileView.matches) return;
     const rect = container.getBoundingClientRect();
     pointer = {x: event.clientX - rect.left, y: event.clientY - rect.top,
       clientX: event.clientX, clientY: event.clientY};
@@ -1236,6 +1288,7 @@ async function start() {
   });
   container.addEventListener('pointerleave', () => { pointer = null; refreshOverlays(); });
   globe.controls().addEventListener('change', refreshOverlays);
+  mobileView.addEventListener('change', () => { pointer = null; colorCountries(); refreshOverlays(); });
 
   function focusCoords(lat, lng, altitude) {
     const hasBottomCard = (!round && (!customPos || window.innerWidth <= 700)) || (round && round.solved);
