@@ -1247,7 +1247,7 @@ async function start() {
       frame = 0;
       if (mobileView.matches) {
         pointerTooltip.hidden = true;
-        if (round || !touchDragging) {
+        if (!touchDragging) {
           resetCenterLocation();
           if (hovered) { hovered = null; colorCountries(); }
         } else {
@@ -1262,7 +1262,7 @@ async function start() {
             pendingCenterKey = key;
             centerTimer = setTimeout(() => {
               centerTimer = null;
-              if (!mobileView.matches || round || !touchDragging || pendingCenterKey !== key) return;
+              if (!mobileView.matches || !touchDragging || pendingCenterKey !== key) return;
               shownCenterKey = key;
               centerLocation.textContent = label;
               centerLocation.hidden = !label;
