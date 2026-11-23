@@ -818,6 +818,32 @@ const cityName = ({properties: p}) => {
 const isCapital = ({properties: p}) => Number(p.ADM0CAP) === 1;
 const population = ({properties: p}) => Number(p.POP_MAX) || 0;
 
+// Korean travel demand is not always reflected in population rankings.
+// Keep the regular major cities and add these destinations to their country lists.
+const popularTravelCities = [
+  { code: 'JPN', sourceName: 'Naha', korean: '오키나와 나하', english: 'Naha', aliases: 'Okinawa' },
+  { code: 'VNM', sourceName: 'Nha Trang', korean: '나트랑', english: 'Nha Trang', aliases: '냐짱' },
+  { code: 'VNM', sourceName: 'Phu Quoc', korean: '푸꾸옥', english: 'Phu Quoc', aliases: '푸꾸옥섬 즈엉동 Phú Quốc Dương Đông',
+    coordinates: [103.95929, 10.21716] }, // Dương Đông, GeoNames 1569973
+  { code: 'IDN', sourceName: 'Denpasar', korean: '발리 덴파사르', english: 'Denpasar', aliases: 'Bali' },
+  { code: 'PHL', sourceName: 'Cebu', korean: '세부', english: 'Cebu City', aliases: '세부시' }
+];
+
+function addPopularTravelCities(cities) {
+  const destinations = new Set();
+  for (const {code, sourceName, korean, english, aliases, coordinates} of popularTravelCities) {
+    let city = cities.find(({properties: p}) => p.ADM0_A3 === code && p.NAME === sourceName);
+    if (!city && coordinates) {
+      city = {type: 'Feature', geometry: {type: 'Point', coordinates}, properties: {ADM0_A3: code, NAME: sourceName}};
+      cities.push(city);
+    }
+    if (!city) continue;
+    Object.assign(city.properties, {NAME_KO: korean, NAME_EN: english, travelAliases: aliases});
+    destinations.add(city);
+  }
+  return destinations;
+}
+
 async function loadFeatures(file) {
   const response = await fetch(base + file);
   if (!response.ok) throw new Error(file + ' · HTTP ' + response.status);
@@ -906,12 +932,20 @@ async function start() {
     const code = country.properties.ADM0_A3;
     if (code && code !== '-99') countryByCode.set(code, country);
   }
+  const travelDestinations = addPopularTravelCities(cities);
   const cityGroups = new Map();
   for (const city of cities) {
     const code = city.properties.ADM0_A3;
     if (!code || code === '-99') continue;
     if (!cityGroups.has(code)) cityGroups.set(code, []);
     cityGroups.get(code).push(city);
+  }
+
+  function majorCitiesFor(country) {
+    const group = cityGroups.get(country?.properties.ADM0_A3) || [];
+    const ranked = [...group].sort((a, b) => Number(isCapital(b)) - Number(isCapital(a)) || population(b) - population(a));
+    const major = ranked.slice(0, 6);
+    return [...major, ...ranked.slice(6).filter(city => travelDestinations.has(city))];
   }
 
   // 실제 국제공항(IATA 코드 보유 major/mid 등급 공항) 색인 구축
@@ -1822,9 +1856,7 @@ async function start() {
     active = country;
     select.value = country ? String(countries.indexOf(country)) : '';
     colorCountries();
-    const baseCities = country ? [...(cityGroups.get(country.properties.ADM0_A3) || [])]
-      .sort((a, b) => Number(isCapital(b)) - Number(isCapital(a)) || population(b) - population(a))
-      .slice(0, 6) : [];
+    const baseCities = majorCitiesFor(country);
     if (extraCity && !baseCities.includes(extraCity)) baseCities.unshift(extraCity);
     selectedCities = baseCities;
     for (const city of markers.keys()) if (!selectedCities.includes(city)) markers.delete(city);
@@ -1868,7 +1900,7 @@ async function start() {
     const label = cityName(city);
     const cName = country ? countryName(country) : (city.properties.ADM0NAME || '');
     const p = city.properties;
-    const altNames = [p.NAME, p.NAMEASCII, p.NAME_EN, p.name_en, p.NAME_KO, p.name_ko, p.NAMEALT].filter(Boolean).join(' ');
+    const altNames = [p.NAME, p.NAMEASCII, p.NAME_EN, p.name_en, p.NAME_KO, p.name_ko, p.NAMEALT, p.travelAliases].filter(Boolean).join(' ');
     searchIndex.push({
       type: 'city',
       city,
@@ -1999,9 +2031,7 @@ async function start() {
   });
 
   const questions = countries.flatMap(country => {
-    const majorCities = [...(cityGroups.get(country.properties.ADM0_A3) || [])]
-      .sort((a, b) => Number(isCapital(b)) - Number(isCapital(a)) || population(b) - population(a))
-      .slice(0, 6);
+    const majorCities = majorCitiesFor(country);
     return majorCities.map(city => ({country, city}));
   });
   const koreanQuestions = questions.filter(item => item.country.properties.ADM0_A3 === 'KOR');
