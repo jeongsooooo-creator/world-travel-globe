@@ -1247,11 +1247,12 @@ async function start() {
       frame = 0;
       if (mobileView.matches) {
         pointerTooltip.hidden = true;
-        if (!touchDragging) {
+        if (!touchDragging && !round) {
           resetCenterLocation();
           if (hovered) { hovered = null; colorCountries(); }
         } else {
-          centerMarker.hidden = false;
+          centerMarker.hidden = !touchDragging;
+          centerLocation.style.top = round ? (quiz.getBoundingClientRect().bottom + 8) + 'px' : '';
           const rect = container.getBoundingClientRect();
           const point = globe.toGlobeCoords(rect.width / 2, rect.height / 2);
           const country = point && countryAt(point, regions);
@@ -1262,7 +1263,7 @@ async function start() {
             pendingCenterKey = key;
             centerTimer = setTimeout(() => {
               centerTimer = null;
-              if (!mobileView.matches || !touchDragging || pendingCenterKey !== key) return;
+              if (!mobileView.matches || (!touchDragging && !round) || pendingCenterKey !== key) return;
               shownCenterKey = key;
               centerLocation.textContent = label;
               centerLocation.hidden = !label;
