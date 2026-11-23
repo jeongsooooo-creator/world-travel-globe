@@ -65,7 +65,7 @@ body { margin: 0; background: #081321; color: #eef5ff; font: 15px/1.45 system-ui
 #game:disabled { opacity: 0.65; cursor: default }
 
 /* 탐색 패널 (초기 위치: 하단 중앙, 드래그 이동 가능) */
-aside#explore { position: fixed; z-index: 1100; bottom: 24px; left: 50%; transform: translateX(-50%);
+aside#explore { position: fixed; z-index: 1100; top: 16px; left: 16px; transform: none;
   width: 360px; max-height: 38vh;
   display: flex; flex-direction: column;
   border: 1px solid #36516b; border-radius: 14px; background: rgba(11, 25, 42, 0.93);
@@ -309,6 +309,7 @@ button { color: #a9ddff; background: transparent; border: 0; padding: 3px; curso
 }
 /* 📱 모바일 반응형 바텀 시트 레이아웃 */
 @media (max-width: 700px) {
+  #route-toggle, #city-card-flight { display: none !important; }
   aside#explore {
     top: auto !important;
     bottom: 0 !important;
@@ -433,6 +434,7 @@ button { color: #a9ddff; background: transparent; border: 0; padding: 3px; curso
 
 <div id="modes" role="group" aria-label="지구본 모드">
   <button id="browse" type="button" aria-pressed="true">탐색 모드</button>
+  <button id="route-toggle" type="button" aria-pressed="false">항로 보기</button>
   <button id="game" type="button" aria-pressed="false" disabled>게임 모드</button>
 </div>
 
@@ -452,7 +454,7 @@ button { color: #a9ddff; background: transparent; border: 0; padding: 3px; curso
         <span class="drag-grip" aria-hidden="true">⋮⋮</span>
         <h1>세계 여행 지구본</h1>
       </div>
-      <p class="panel-subtitle">지구본 아무 곳이나 클릭 · 창 드래그 이동</p>
+      <p class="panel-subtitle">나라 선택 후 도시 또는 지역 선택 · 창 드래그 이동</p>
     </div>
     <div class="header-actions">
       <button id="reset-pos" class="reset-btn" type="button" title="원래 위치로 되돌리기" hidden>↺ 초기화</button>
@@ -587,6 +589,7 @@ const resetPosBtn = document.querySelector('#reset-pos');
 const sheetToggle = document.querySelector('#sheet-toggle');
 const browse = document.querySelector('#browse');
 const game = document.querySelector('#game');
+const routeToggle = document.querySelector('#route-toggle');
 const next = document.querySelector('#next');
 const quiz = document.querySelector('#quiz');
 const question = document.querySelector('#question');
@@ -624,6 +627,7 @@ function setSheetCollapsed(collapsed) {
   sheetToggle.setAttribute('aria-expanded', String(!collapsed));
   sheetToggle.textContent = collapsed ? '펼치기 ▴' : '접기 ▾';
 }
+setSheetCollapsed(mobileView.matches);
 
 let customPos = null;
 function applyPanelPosition(left, top) {
@@ -1026,6 +1030,19 @@ async function start() {
   let selectedCities = [];
   let customPin = null;
   let airportPin = null; // 항로가 실제로 도착하는 국제공항 핀
+  let routeEnabled = false;
+  let routeDestination = null;
+  function updateRouteButton() {
+    routeToggle.hidden = mobileView.matches || Boolean(round);
+    routeToggle.textContent = routeEnabled ? '항로 끄기' : '항로 보기';
+    routeToggle.setAttribute('aria-pressed', String(routeEnabled));
+  }
+  routeToggle.addEventListener('click', () => {
+    routeEnabled = !routeEnabled;
+    updateRouteButton();
+    if (routeDestination) updateFlightRoute(routeDestination);
+    else { airportPin = null; globe.arcsData([]); syncHtmlMarkers(); }
+  });
 
   function syncHtmlMarkers() {
     const items = [...selectedCities];
@@ -1036,6 +1053,7 @@ async function start() {
 
   // 모든 선택(도시 및 임의 지점)에서 가장 가까운 실제 국제공항으로만 항로 연결
   function updateFlightRoute({ lat, lng, country }) {
+    routeDestination = { lat, lng, country };
     airportPin = null;
 
     // 1. 공해(바다)인 경우 항공 항로를 그리지 않음
@@ -1087,7 +1105,8 @@ async function start() {
       };
     }
 
-    globe.arcsData(arcs);
+    if (!routeEnabled || mobileView.matches || round) airportPin = null;
+    globe.arcsData(routeEnabled && !mobileView.matches && !round ? arcs : []);
     syncHtmlMarkers();
 
     if (distanceKm < 80) {
@@ -1229,6 +1248,8 @@ async function start() {
   let pointer = null;
   let touchStart = null;
   let touchDragging = false;
+  let multiTouch = false;
+  const activeTouches = new Set();
   let frame = 0;
   let centerTimer = null;
   let pendingCenterKey = null;
@@ -1300,7 +1321,12 @@ async function start() {
     });
   }
   container.addEventListener('pointerdown', event => {
+    if (mobileView.matches && event.pointerType === 'touch') {
+      activeTouches.add(event.pointerId);
+      if (activeTouches.size > 1) multiTouch = true;
+    }
     if (mobileView.matches && event.pointerType === 'touch' && event.isPrimary) {
+      multiTouch = false;
       touchStart = {id: event.pointerId, x: event.clientX, y: event.clientY};
     }
   });
@@ -1312,9 +1338,18 @@ async function start() {
     }
   });
   function endTouchDrag(event) {
+    if (event.pointerType === 'touch') activeTouches.delete(event.pointerId);
     if (!touchStart || event.pointerId !== touchStart.id) return;
+    const wasDragging = touchDragging && !multiTouch;
     touchStart = null;
     touchDragging = false;
+    if (wasDragging && event.type === 'pointerup' && mobileView.matches && !(round && round.solved)) {
+      const rect = container.getBoundingClientRect();
+      const point = globe.toGlobeCoords(rect.width / 2, rect.height / 2);
+      const country = point && countryAt(point, regions);
+      if (country) selectCountry(country, false);
+      else if (active) { if (round) selectCountry(null, false); else choose(null, null, false); }
+    }
     resetCenterLocation();
     if (mobileView.matches && hovered) { hovered = null; colorCountries(); }
     refreshOverlays();
@@ -1330,7 +1365,12 @@ async function start() {
   });
   container.addEventListener('pointerleave', () => { pointer = null; refreshOverlays(); });
   globe.controls().addEventListener('change', refreshOverlays);
-  mobileView.addEventListener('change', () => { pointer = null; touchStart = null; touchDragging = false; colorCountries(); refreshOverlays(); });
+  mobileView.addEventListener('change', () => {
+    pointer = null; touchStart = null; touchDragging = false;
+    updateRouteButton();
+    if (routeDestination) updateFlightRoute(routeDestination);
+    colorCountries(); refreshOverlays();
+  });
 
   function focusCoords(lat, lng, altitude) {
     const hasBottomCard = (!round && (!customPos || window.innerWidth <= 700)) || (round && round.solved);
@@ -1458,6 +1498,7 @@ async function start() {
     resetCardPosition();
     forecastWrap.hidden = true;
     globe.arcsData([]);
+    routeDestination = null;
   }
   cardClose.addEventListener('click', closeCityCard);
 
@@ -1652,9 +1693,6 @@ async function start() {
     closeCityCard();
     activeCity = city;
     updateCityButtons();
-    if (!inGame && window.innerWidth <= 700) {
-      setSheetCollapsed(false);
-    }
 
     const request = new AbortController();
     cityRequest = request;
@@ -1795,8 +1833,8 @@ async function start() {
     list.replaceChildren();
     showFlag(selectedFlag, country);
     status.textContent = country
-      ? countryName(country) + (selectedCities.length ? ' · 주요 도시 ' + selectedCities.length + '곳 (또는 아무 지점 클릭)' : ' · 지도에서 원하는 지점을 클릭하세요')
-      : '지구본의 국가나 바다 어디든 클릭·검색하세요.';
+      ? countryName(country) + (selectedCities.length ? ' · 주요 도시 ' + selectedCities.length + '곳' + (mobileView.matches ? '을 탭하세요' : ' 또는 해당 국가의 지점을 클릭하세요') : ' · 표시할 주요 도시가 없습니다')
+      : '지구본에서 나라를 선택하세요.';
     for (const city of round ? [] : selectedCities) {
       const row = document.createElement('li');
       const button = document.createElement('button');
@@ -1809,9 +1847,6 @@ async function start() {
       list.append(row);
     }
     if (shouldFocus && !extraCity && selectedCities.length) focusCity(selectedCities[0], 1.35);
-    if (country && !round && window.innerWidth <= 700) {
-      setSheetCollapsed(false);
-    }
   }
 
   const searchIndex = [];
@@ -1887,6 +1922,7 @@ async function start() {
     }
     const terms = raw.split(/\s+/);
     currentMatches = searchIndex
+      .filter(item => item.type === 'country' || (active && item.country === active && (!mobileView.matches || selectedCities.includes(item.city))))
       .filter(item => terms.every(term => item.keywords.includes(term)))
       .sort((a, b) => {
         const aStarts = a.label.toLowerCase().startsWith(raw) ? 1 : 0;
@@ -1975,6 +2011,7 @@ async function start() {
     stopRoundTimer();
     reflection.hidden = true;
     round = {target, started: performance.now(), solved: false};
+    updateRouteButton();
     choose(null);
     next.hidden = true;
     zoomHint.hidden = true;
@@ -1999,21 +2036,23 @@ async function start() {
     }, 250);
   }
 
-  function selectCountry(country) {
+  function selectCountry(country, shouldFocus = true) {
     if (!round) {
-      choose(country);
+      if (country !== active) choose(country, null, shouldFocus);
       return;
     }
     if (round.solved) return;
     if (country !== round.target.country) {
       zoomHint.hidden = true;
-      choose(null);
+      if (mobileView.matches && country) {
+        if (active !== country) choose(country, null, false);
+      } else choose(null);
       feedback.textContent = country
         ? countryName(country) + '을(를) 선택했어요. 문제에 나온 나라를 찾아보세요.'
         : '지구본에서 먼저 나라를 선택하세요.';
       return;
     }
-    if (active !== country) choose(country);
+    if (active !== country) choose(country, null, shouldFocus);
     zoomHint.hidden = false;
     feedback.textContent = '도시를 클릭하세요.';
   }
@@ -2022,6 +2061,7 @@ async function start() {
     if (!round) return;
     stopRoundTimer();
     round = null;
+    updateRouteButton();
     quiz.hidden = next.hidden = timerBadge.hidden = true;
     select.disabled = false;
     searchInput.disabled = false;
@@ -2069,8 +2109,14 @@ async function start() {
       return;
     }
 
+    if (!country) return;
+    if (mobileView.matches) {
+      if (country !== active) choose(country, null, false);
+      return;
+    }
     if (country !== active) {
       choose(country, null, false);
+      return;
     }
     showCustomPointCard(point.lat, point.lng, country);
     const currentAlt = globe.pointOfView().altitude;
@@ -2100,6 +2146,7 @@ async function start() {
   };
   window.addEventListener('resize', resize);
   resize();
+  updateRouteButton();
 
   globe.pointOfView({lat: 33, lng: 127.5, altitude: 2.15});
   choose(null);
