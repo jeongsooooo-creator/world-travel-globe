@@ -284,7 +284,20 @@ button { color: #a9ddff; background: transparent; border: 0; padding: 3px; curso
   color: #ffe6a8; font: 600 11px system-ui; white-space: nowrap;
 }
 
-#center-location { display: none; }
+#center-location, #center-marker { display: none; }
+@media (max-width: 700px) {
+  #center-marker:not([hidden]) {
+    display: block; position: fixed; z-index: 1051; left: 50%; top: 50%;
+    width: 22px; height: 22px; transform: translate(-50%, -50%);
+    border: 2px solid #fff; border-radius: 50%; pointer-events: none;
+    box-shadow: 0 0 0 2px rgba(0, 28, 46, .8), 0 0 12px #47dcff;
+  }
+  #center-marker::after {
+    content: ''; position: absolute; width: 4px; height: 4px;
+    left: 50%; top: 50%; transform: translate(-50%, -50%);
+    border-radius: 50%; background: white; box-shadow: 0 0 3px #001c2e;
+  }
+}
 @media (max-width: 700px) {
   #center-location:not([hidden]) {
     display: block; position: fixed; z-index: 1050; top: calc(62px + env(safe-area-inset-top));
@@ -415,6 +428,7 @@ button { color: #a9ddff; background: transparent; border: 0; padding: 3px; curso
 
 <div id="globe"></div>
 <div id="center-location" hidden aria-live="off"></div>
+<div id="center-marker" hidden aria-hidden="true"></div>
 <div id="pointer-tooltip" aria-hidden="true" hidden><img id="hover-flag" class="country-flag" alt="" hidden><span id="hover-text"></span></div>
 
 <div id="modes" role="group" aria-label="지구본 모드">
@@ -597,6 +611,7 @@ const hoverText = document.querySelector('#hover-text');
 const selectedFlag = document.querySelector('#selected-flag');
 const pointerTooltip = document.querySelector('#pointer-tooltip');
 const centerLocation = document.querySelector('#center-location');
+const centerMarker = document.querySelector('#center-marker');
 const mobileView = window.matchMedia('(max-width: 700px)');
 const container = document.querySelector('#globe');
 const list = document.querySelector('#cities');
@@ -1212,6 +1227,8 @@ async function start() {
   }
 
   let pointer = null;
+  let touchStart = null;
+  let touchDragging = false;
   let frame = 0;
   let centerTimer = null;
   let pendingCenterKey = null;
@@ -1222,6 +1239,7 @@ async function start() {
     pendingCenterKey = null;
     shownCenterKey = null;
     centerLocation.hidden = true;
+    centerMarker.hidden = true;
   }
   function refreshOverlays() {
     if (frame) return;
@@ -1229,10 +1247,11 @@ async function start() {
       frame = 0;
       if (mobileView.matches) {
         pointerTooltip.hidden = true;
-        if (round) {
+        if (round || !touchDragging) {
           resetCenterLocation();
           if (hovered) { hovered = null; colorCountries(); }
         } else {
+          centerMarker.hidden = false;
           const rect = container.getBoundingClientRect();
           const point = globe.toGlobeCoords(rect.width / 2, rect.height / 2);
           const country = point && countryAt(point, regions);
@@ -1243,7 +1262,7 @@ async function start() {
             pendingCenterKey = key;
             centerTimer = setTimeout(() => {
               centerTimer = null;
-              if (!mobileView.matches || round || pendingCenterKey !== key) return;
+              if (!mobileView.matches || round || !touchDragging || pendingCenterKey !== key) return;
               shownCenterKey = key;
               centerLocation.textContent = label;
               centerLocation.hidden = !label;
@@ -1279,6 +1298,28 @@ async function start() {
       layoutCities();
     });
   }
+  container.addEventListener('pointerdown', event => {
+    if (mobileView.matches && event.pointerType === 'touch' && event.isPrimary) {
+      touchStart = {id: event.pointerId, x: event.clientX, y: event.clientY};
+    }
+  });
+  window.addEventListener('pointermove', event => {
+    if (touchStart && event.pointerId === touchStart.id && mobileView.matches &&
+        Math.hypot(event.clientX - touchStart.x, event.clientY - touchStart.y) > 5) {
+      touchDragging = true;
+      refreshOverlays();
+    }
+  });
+  function endTouchDrag(event) {
+    if (!touchStart || event.pointerId !== touchStart.id) return;
+    touchStart = null;
+    touchDragging = false;
+    resetCenterLocation();
+    if (mobileView.matches && hovered) { hovered = null; colorCountries(); }
+    refreshOverlays();
+  }
+  window.addEventListener('pointerup', endTouchDrag);
+  window.addEventListener('pointercancel', endTouchDrag);
   container.addEventListener('pointermove', event => {
     if (mobileView.matches) return;
     const rect = container.getBoundingClientRect();
@@ -1288,7 +1329,7 @@ async function start() {
   });
   container.addEventListener('pointerleave', () => { pointer = null; refreshOverlays(); });
   globe.controls().addEventListener('change', refreshOverlays);
-  mobileView.addEventListener('change', () => { pointer = null; colorCountries(); refreshOverlays(); });
+  mobileView.addEventListener('change', () => { pointer = null; touchStart = null; touchDragging = false; colorCountries(); refreshOverlays(); });
 
   function focusCoords(lat, lng, altitude) {
     const hasBottomCard = (!round && (!customPos || window.innerWidth <= 700)) || (round && round.solved);
