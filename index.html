@@ -52,6 +52,8 @@ body { margin: 0; background: #081321; color: #eef5ff; font: 15px/1.45 system-ui
   padding: 10px 14px; border: 1px solid #36516b; border-radius: 12px;
   background: rgba(11, 25, 42, 0.94); backdrop-filter: blur(10px); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5) }
 #quiz[hidden] { display: none !important }
+#quiz.answer-reveal { width: max-content; padding: 4px; }
+#quiz.answer-reveal #next { margin-top: 0; }
 #quiz p { display: inline; margin: 0; font-size: 14px }
 #quiz #timer { display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 6px;
   background: #16304b; color: #83dcff; font-weight: 700; font-size: 13px; font-variant-numeric: tabular-nums }
@@ -1300,6 +1302,13 @@ async function start() {
     if (frame) return;
     frame = requestAnimationFrame(() => {
       frame = 0;
+      if (round?.timedOut) {
+        resetCenterLocation();
+        pointerTooltip.hidden = true;
+        if (hovered) { hovered = null; colorCountries(); }
+        layoutCities();
+        return;
+      }
       if (mobileView.matches) {
         pointerTooltip.hidden = true;
         if (!touchDragging && !round) {
@@ -1819,12 +1828,19 @@ async function start() {
 
     const { country, city } = round.target;
     if (isTimeout) {
-      if (active !== country) choose(country);
-      feedback.textContent = `시간 초과! 정답은 ${countryName(country)}의 ${cityName(city)}입니다.`;
-    } else {
-      const elapsed = ((performance.now() - round.started) / 1000).toFixed(1);
-      feedback.textContent = `정답! ${cityName(city)} · ${elapsed}초 걸렸어요.`;
+      round.timedOut = true;
+      choose(country, null, false);
+      selectedCities = [city];
+      syncHtmlMarkers();
+      quiz.classList.add('answer-reveal');
+      question.hidden = feedback.hidden = reflection.hidden = zoomHint.hidden = true;
+      next.hidden = false;
+      const [lng, lat] = city.geometry.coordinates;
+      globe.pointOfView({lat, lng, altitude: 0.85}, 800);
+      return;
     }
+    const elapsed = ((performance.now() - round.started) / 1000).toFixed(1);
+    feedback.textContent = `정답! ${cityName(city)} · ${elapsed}초 걸렸어요.`;
 
     reflectionPrompt.textContent = reflectionQuestions[reflectionIndex];
     reflection.hidden = false;
@@ -2039,6 +2055,8 @@ async function start() {
 
   function startRound(target) {
     stopRoundTimer();
+    quiz.classList.remove('answer-reveal');
+    question.hidden = feedback.hidden = false;
     reflection.hidden = true;
     round = {target, started: performance.now(), solved: false};
     updateRouteButton();
