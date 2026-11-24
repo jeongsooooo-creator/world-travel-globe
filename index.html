@@ -469,7 +469,7 @@ button { color: #a9ddff; background: transparent; border: 0; padding: 3px; curso
     <div>
       <div class="panel-title-row">
         <span class="drag-grip" aria-hidden="true">⋮⋮</span>
-        <h1>세계 여행 지구본</h1>
+        <h1 id="explore-title">세계 여행 지구본</h1>
       </div>
       <p class="panel-subtitle">나라 선택 후 도시 또는 지역 선택 · 창 드래그 이동</p>
     </div>
@@ -602,6 +602,7 @@ const NO_AIRPORT_TRANSITS = {
 const splash = document.querySelector('#preview-splash');
 const explore = document.querySelector('#explore');
 const panelHeader = document.querySelector('#panel-header');
+const exploreTitle = document.querySelector('#explore-title');
 const resetPosBtn = document.querySelector('#reset-pos');
 const sheetToggle = document.querySelector('#sheet-toggle');
 const browse = document.querySelector('#browse');
@@ -1426,7 +1427,12 @@ async function start() {
   });
   container.addEventListener('pointerleave', () => { pointer = null; refreshOverlays(); });
   globe.controls().addEventListener('change', refreshOverlays);
+  function updateExploreTitle() {
+    exploreTitle.textContent = mobileView.matches && active ? countryName(active) : '세계 여행 지구본';
+  }
+
   mobileView.addEventListener('change', () => {
+    updateExploreTitle();
     pointer = null; touchStart = null; touchDragging = false;
     updateRouteButton();
     if (routeDestination) updateFlightRoute(routeDestination);
@@ -1901,6 +1907,7 @@ async function start() {
   function choose(country, extraCity = null, shouldFocus = true) {
     closeCityCard();
     active = country;
+    updateExploreTitle();
     select.value = country ? String(countries.indexOf(country)) : '';
     colorCountries();
     const baseCities = majorCitiesFor(country);
