@@ -87,7 +87,12 @@ aside#explore { position: fixed; z-index: 1100; top: 16px; left: 16px; transform
   border: 1px solid #36516b; border-radius: 14px; background: rgba(11, 25, 42, 0.93);
   backdrop-filter: blur(12px); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55); overflow: hidden }
 aside#explore[hidden] { display: none !important }
-aside#explore.moved { bottom: auto; transform: none; max-height: calc(100dvh - 84px) }
+aside#explore.moved { bottom: auto; transform: none }
+@media (min-width: 701px) {
+  aside#explore:is(.moved, .has-location) {
+    max-height: calc(100dvh - var(--explore-top, 16px) - 16px);
+  }
+}
 aside#explore.dragging { user-select: none; border-color: #83dcff; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.75) }
 
 .sheet-grabber { display: none }
@@ -629,7 +634,7 @@ function applyPanelPosition(left, top) {
   explore.style.top = clampedTop + 'px';
   explore.style.bottom = 'auto';
   explore.style.transform = 'none';
-  explore.style.maxHeight = Math.max(220, window.innerHeight - clampedTop - 16) + 'px';
+  explore.style.setProperty('--explore-top', clampedTop + 'px');
   resetPosBtn.hidden = false;
 }
 
@@ -640,7 +645,7 @@ function resetPanelPosition() {
   explore.style.top = '';
   explore.style.bottom = '';
   explore.style.transform = '';
-  explore.style.maxHeight = '';
+  explore.style.removeProperty('--explore-top');
   resetPosBtn.hidden = true;
 }
 resetPosBtn.addEventListener('click', event => {
@@ -1527,6 +1532,7 @@ async function start() {
     clearPins();
     updateCityButtons();
     card.hidden = true;
+    explore.classList.remove('has-location');
     quizDetails.setAttribute('aria-expanded', 'false');
     card.classList.remove('floating');
     resetCardPosition();
@@ -1723,6 +1729,15 @@ async function start() {
     }
   }
 
+  function revealExploreCard() {
+    explore.classList.add('has-location');
+    if (!mobileView.matches) {
+      card.parentElement.scrollTop = 0;
+    } else if (!explore.classList.contains('collapsed')) {
+      card.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+    }
+  }
+
   async function showCityCard(city, country, inGame) {
     closeCityCard();
     activeCity = city;
@@ -1753,7 +1768,7 @@ async function start() {
     weatherVal.textContent = '날씨 불러오는 중…';
     sunVal.textContent = '';
     card.hidden = false;
-    if (!inGame && (!mobileView.matches || !explore.classList.contains('collapsed'))) card.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+    if (!inGame) revealExploreCard();
 
     await loadLocationWeatherAndMeta(lat, lng, request, inGame, false, country);
   }
@@ -1796,7 +1811,7 @@ async function start() {
     weatherVal.textContent = '날씨 불러오는 중…';
     sunVal.textContent = '';
     card.hidden = false;
-    card.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+    revealExploreCard();
 
     await loadLocationWeatherAndMeta(lat, lng, request, false, true, country);
   }
