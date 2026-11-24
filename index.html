@@ -1384,10 +1384,8 @@ async function start() {
         }
       }
       layoutCities();
-      const aimingAtCity = touchDragging && mobileView.matches && !multiTouch && touchStart?.cityRound && touchStart.cityRound === round &&
-        active === round.target.country &&
-        cityAtCenter(innerWidth / 2, innerHeight / 2);
-      centerMarker.classList.toggle('city-target', Boolean(aimingAtCity));
+      const aimedCity = touchDragging && mobileView.matches && !multiTouch && cityForGesture(touchStart);
+      centerMarker.classList.toggle('city-target', Boolean(aimedCity));
     });
   }
   container.addEventListener('pointerdown', event => {
@@ -1398,8 +1396,8 @@ async function start() {
     if (mobileView.matches && event.pointerType === 'touch' && event.isPrimary) {
       multiTouch = false;
       suppressTouchClick = false;
-      const cityRound = round && !round.solved && active === round.target.country ? round : null;
-      touchStart = {id: event.pointerId, x: event.clientX, y: event.clientY, round, cityRound};
+      const cityCountry = !round || (!round.solved && active === round.target.country) ? active : null;
+      touchStart = {id: event.pointerId, x: event.clientX, y: event.clientY, round, cityCountry};
     }
   });
   window.addEventListener('pointermove', event => {
@@ -1409,6 +1407,12 @@ async function start() {
       refreshOverlays();
     }
   });
+  function cityForGesture(gesture) {
+    if (!gesture?.cityCountry ||
+        gesture.cityCountry !== active || gesture.round !== round || round?.solved) return null;
+    return cityAtCenter(innerWidth / 2, innerHeight / 2);
+  }
+
   function endTouchDrag(event) {
     if (event.pointerType === 'touch') activeTouches.delete(event.pointerId);
     if (!touchStart || event.pointerId !== touchStart.id) return;
@@ -1418,13 +1422,10 @@ async function start() {
     touchStart = null;
     touchDragging = false;
     if (wasDragging && event.type === 'pointerup' && mobileView.matches && gesture.round === round && !round?.solved) {
-      if (gesture.cityRound && active === round.target.country) {
-        layoutCities();
-        const city = cityAtCenter(innerWidth / 2, innerHeight / 2);
-        if (city) selectCity(city);
-      } else {
-        selectCountryAtCenter();
-      }
+      if (gesture.cityCountry) layoutCities();
+      const city = cityForGesture(gesture);
+      if (city) selectCity(city);
+      else if (!round || !gesture.cityCountry) selectCountryAtCenter();
     }
     resetCenterLocation();
     if (mobileView.matches && hovered) { hovered = null; colorCountries(); }
