@@ -54,6 +54,19 @@ body { margin: 0; background: #081321; color: #eef5ff; font: 15px/1.45 system-ui
 #quiz[hidden] { display: none !important }
 #quiz.answer-reveal { width: max-content; padding: 4px; }
 #quiz.answer-reveal #next { margin-top: 0; }
+#question-mobile, #mobile-correct { display: none; }
+#quiz #quiz-details { margin-top: 0; padding: 6px 10px; color: #c0d9ef; font-size: 13px; }
+@media (max-width: 700px) {
+  #modes button { padding: 5px 10px; font-size: 13px; }
+  #quiz { top: calc(max(12px, env(safe-area-inset-top)) + 41px);
+    width: max-content; max-width: calc(100vw - 16px); padding: 5px 8px; }
+  #quiz #question, #quiz #feedback, #quiz #zoom-hint, #quiz #reflection { display: none; }
+  #quiz #question-mobile:not([hidden]), #quiz #mobile-correct:not([hidden]) {
+    display: inline; margin: 0; font-size: 13px; font-weight: 700;
+  }
+  #quiz #timer { margin-left: 4px; font-size: 12px; white-space: nowrap; }
+  #quiz #mobile-correct { color: #a9edbb; margin-right: 4px; }
+}
 #quiz p { display: inline; margin: 0; font-size: 14px }
 #quiz #timer { display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 6px;
   background: #16304b; color: #83dcff; font-weight: 700; font-size: 13px; font-variant-numeric: tabular-nums }
@@ -441,10 +454,12 @@ button { color: #a9ddff; background: transparent; border: 0; padding: 3px; curso
 </div>
 
 <section id="quiz" hidden>
-  <p id="question"></p><span id="timer" aria-live="off">⏱ 60초</span>
+  <p id="question"></p><p id="question-mobile" hidden></p><span id="timer" aria-live="off">⏱ 60초</span>
   <p id="feedback" role="status"></p>
   <p id="zoom-hint" hidden>필요하면 확대하거나 회전하세요.</p>
   <p id="reflection" hidden><strong>세계 친구 만나기</strong> · <span id="reflection-prompt"></span></p>
+  <p id="mobile-correct" role="status" hidden>정답!</p>
+  <button id="quiz-details" type="button" aria-controls="city-card" aria-expanded="false" hidden>도시 정보</button>
   <button id="next" type="button" hidden>다음 문제</button>
 </section>
 
@@ -595,6 +610,9 @@ const routeToggle = document.querySelector('#route-toggle');
 const next = document.querySelector('#next');
 const quiz = document.querySelector('#quiz');
 const question = document.querySelector('#question');
+const mobileQuestion = document.querySelector('#question-mobile');
+const mobileCorrect = document.querySelector('#mobile-correct');
+const quizDetails = document.querySelector('#quiz-details');
 const timerBadge = document.querySelector('#timer');
 const reflection = document.querySelector('#reflection');
 const reflectionPrompt = document.querySelector('#reflection-prompt');
@@ -1302,7 +1320,7 @@ async function start() {
     if (frame) return;
     frame = requestAnimationFrame(() => {
       frame = 0;
-      if (round?.timedOut) {
+      if (round?.compactResult) {
         resetCenterLocation();
         pointerTooltip.hidden = true;
         if (hovered) { hovered = null; colorCountries(); }
@@ -1537,6 +1555,7 @@ async function start() {
     clearPins();
     updateCityButtons();
     card.hidden = true;
+    quizDetails.setAttribute('aria-expanded', 'false');
     card.classList.remove('floating');
     resetCardPosition();
     forecastWrap.hidden = true;
@@ -1762,7 +1781,7 @@ async function start() {
     weatherVal.textContent = '날씨 불러오는 중…';
     sunVal.textContent = '';
     card.hidden = false;
-    if (!inGame) card.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+    if (!inGame && (!mobileView.matches || !explore.classList.contains('collapsed'))) card.scrollIntoView({behavior: 'smooth', block: 'nearest'});
 
     await loadLocationWeatherAndMeta(lat, lng, request, inGame, false, country);
   }
@@ -1827,13 +1846,14 @@ async function start() {
     timerBadge.hidden = true;
 
     const { country, city } = round.target;
-    if (isTimeout) {
-      round.timedOut = true;
+    if (isTimeout || mobileView.matches) {
+      round.compactResult = true;
       choose(country, null, false);
       selectedCities = [city];
       syncHtmlMarkers();
       quiz.classList.add('answer-reveal');
-      question.hidden = feedback.hidden = reflection.hidden = zoomHint.hidden = true;
+      question.hidden = mobileQuestion.hidden = feedback.hidden = reflection.hidden = zoomHint.hidden = true;
+      mobileCorrect.hidden = quizDetails.hidden = isTimeout;
       next.hidden = false;
       const [lng, lat] = city.geometry.coordinates;
       globe.pointOfView({lat, lng, altitude: 0.85}, 800);
@@ -1852,6 +1872,17 @@ async function start() {
     showCityCard(city, country, true);
     focusCity(city, 0.85);
   }
+
+  quizDetails.onclick = () => {
+    if (!round?.solved || quizDetails.hidden) return;
+    if (!card.hidden) {
+      closeCityCard();
+      return;
+    }
+    const {city, country} = round.target;
+    showCityCard(city, country, true);
+    quizDetails.setAttribute('aria-expanded', 'true');
+  };
 
   function selectCity(city) {
     if (!round) {
@@ -2056,7 +2087,8 @@ async function start() {
   function startRound(target) {
     stopRoundTimer();
     quiz.classList.remove('answer-reveal');
-    question.hidden = feedback.hidden = false;
+    question.hidden = mobileQuestion.hidden = feedback.hidden = false;
+    mobileCorrect.hidden = quizDetails.hidden = true;
     reflection.hidden = true;
     round = {target, started: performance.now(), solved: false};
     updateRouteButton();
@@ -2064,6 +2096,8 @@ async function start() {
     next.hidden = true;
     zoomHint.hidden = true;
     question.textContent = countryName(target.country) + '의 ' + cityName(target.city) + '을(를) 찾아보세요.';
+    mobileQuestion.textContent = countryName(target.country) + ' · ' +
+      cityName(target.city).replace(/\s*\([^()]+\)$/, '');
     feedback.textContent = '나라를 클릭하세요.';
 
     timerBadge.hidden = false;
