@@ -313,6 +313,10 @@ button { color: #a9ddff; background: transparent; border: 0; padding: 3px; curso
     border: 2px solid #fff; border-radius: 50%; pointer-events: none;
     box-shadow: 0 0 0 2px rgba(0, 28, 46, .8), 0 0 12px #47dcff;
   }
+  #center-marker.city-target {
+    border-color: #ffd477;
+    box-shadow: 0 0 0 2px rgba(0, 28, 46, .8), 0 0 12px #ffd477;
+  }
   #center-marker::after {
     content: ''; position: absolute; width: 4px; height: 4px;
     left: 50%; top: 50%; transform: translate(-50%, -50%);
@@ -1202,6 +1206,7 @@ async function start() {
       anchor.append(dot, name, tooltip);
       anchor.addEventListener('click', event => {
         event.stopPropagation();
+        if (isTouchDragClick(event)) return;
         selectCity(city);
       });
       markers.set(city, {anchor, dot, name});
@@ -1271,8 +1276,35 @@ async function start() {
     }
   }
 
+  function cityAtCenter(x, y) {
+    // Measure distance to the actual visible dot or label, including displaced labels.
+    let nearest = null;
+    let bestDistance = 22;
+    let bestCenterDistance = Infinity;
+    for (const city of selectedCities) {
+      const marker = markers.get(city);
+      if (!marker || !marker.anchor.isConnected || marker.anchor.style.visibility !== 'visible') continue;
+      for (const part of [marker.dot, marker.name]) {
+        if (getComputedStyle(part).visibility !== 'visible') continue;
+        const rect = part.getBoundingClientRect();
+        if (!rect.width || !rect.height || rect.right <= 0 || rect.bottom <= 0 ||
+            rect.left >= innerWidth || rect.top >= innerHeight) continue;
+        const distance = Math.hypot(Math.max(rect.left - x, 0, x - rect.right),
+          Math.max(rect.top - y, 0, y - rect.bottom));
+        const centerDistance = Math.hypot(x - (rect.left + rect.right) / 2, y - (rect.top + rect.bottom) / 2);
+        if (distance < bestDistance || (distance === bestDistance && centerDistance < bestCenterDistance)) {
+          bestDistance = distance;
+          bestCenterDistance = centerDistance;
+          nearest = city;
+        }
+      }
+    }
+    return nearest;
+  }
+
   let pointer = null;
   let touchStart = null;
+  let suppressTouchClick = false;
   let touchDragging = false;
   let multiTouch = false;
   const activeTouches = new Set();
@@ -1287,6 +1319,7 @@ async function start() {
     shownCenterKey = null;
     centerLocation.hidden = true;
     centerMarker.hidden = true;
+    centerMarker.classList.remove('city-target');
   }
   function refreshOverlays() {
     if (frame) return;
@@ -1351,6 +1384,10 @@ async function start() {
         }
       }
       layoutCities();
+      const aimingAtCity = touchDragging && mobileView.matches && !multiTouch && touchStart?.cityRound && touchStart.cityRound === round &&
+        active === round.target.country &&
+        cityAtCenter(innerWidth / 2, innerHeight / 2);
+      centerMarker.classList.toggle('city-target', Boolean(aimingAtCity));
     });
   }
   container.addEventListener('pointerdown', event => {
@@ -1360,7 +1397,9 @@ async function start() {
     }
     if (mobileView.matches && event.pointerType === 'touch' && event.isPrimary) {
       multiTouch = false;
-      touchStart = {id: event.pointerId, x: event.clientX, y: event.clientY};
+      suppressTouchClick = false;
+      const cityRound = round && !round.solved && active === round.target.country ? round : null;
+      touchStart = {id: event.pointerId, x: event.clientX, y: event.clientY, round, cityRound};
     }
   });
   window.addEventListener('pointermove', event => {
@@ -1374,18 +1413,37 @@ async function start() {
     if (event.pointerType === 'touch') activeTouches.delete(event.pointerId);
     if (!touchStart || event.pointerId !== touchStart.id) return;
     const wasDragging = touchDragging && !multiTouch;
+    const gesture = touchStart;
+    suppressTouchClick = touchDragging || multiTouch;
     touchStart = null;
     touchDragging = false;
-    if (wasDragging && event.type === 'pointerup' && mobileView.matches && !(round && round.solved)) {
-      const rect = container.getBoundingClientRect();
-      const point = globe.toGlobeCoords(rect.width / 2, rect.height / 2);
-      const country = point && countryAt(point, regions);
-      if (country) selectCountry(country, false);
-      else if (active) { if (round) selectCountry(null, false); else choose(null, null, false); }
+    if (wasDragging && event.type === 'pointerup' && mobileView.matches && gesture.round === round && !round?.solved) {
+      if (gesture.cityRound && active === round.target.country) {
+        layoutCities();
+        const city = cityAtCenter(innerWidth / 2, innerHeight / 2);
+        if (city) selectCity(city);
+      } else {
+        selectCountryAtCenter();
+      }
     }
     resetCenterLocation();
     if (mobileView.matches && hovered) { hovered = null; colorCountries(); }
     refreshOverlays();
+  }
+
+  function selectCountryAtCenter() {
+    const rect = container.getBoundingClientRect();
+    const point = globe.toGlobeCoords(rect.width / 2, rect.height / 2);
+    const country = point && countryAt(point, regions);
+    if (country) selectCountry(country, false);
+    else if (active) {
+      if (round) selectCountry(null, false);
+      else choose(null, null, false);
+    }
+  }
+  function isTouchDragClick(event) {
+    return mobileView.matches && suppressTouchClick &&
+      (event.pointerType === 'touch' || event.sourceCapabilities?.firesTouchEvents);
   }
   window.addEventListener('pointerup', endTouchDrag);
   window.addEventListener('pointercancel', endTouchDrag);
@@ -2167,7 +2225,7 @@ async function start() {
   container.addEventListener('click', event => {
     const start = pressed;
     pressed = null;
-    if (!start || Math.hypot(event.clientX - start[0], event.clientY - start[1]) > 5) return;
+    if (isTouchDragClick(event) || !start || Math.hypot(event.clientX - start[0], event.clientY - start[1]) > 5) return;
     const rect = container.getBoundingClientRect();
     const point = globe.toGlobeCoords(event.clientX - rect.left, event.clientY - rect.top);
     if (!point) return;
