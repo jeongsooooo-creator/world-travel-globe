@@ -1,0 +1,14 @@
+{
+  "name": "세계여행",
+  "short_name": "세계여행",
+  "lang": "ko",
+  "start_url": "./",
+  "icons": [
+    {
+      "src": "travel-globe-icon.png",
+      "sizes": "256x256",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
